@@ -1,0 +1,137 @@
+{% extends "base.html" %} {% block title %} Dashboard | Social Media Analytics
+Tool {% endblock %} {% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Analytics Dashboard</h1>
+
+    <p>Track and compare your social media performance.</p>
+  </div>
+
+  <div class="heading-actions">
+    <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
+      Import YouTube
+    </a>
+
+    <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
+  </div>
+</section>
+
+<section class="summary-grid">
+  <article class="summary-card">
+    <p class="card-label">Total Posts</p>
+    <p class="card-value">{{ total_posts }}</p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Total Views</p>
+    <p class="card-value">{{ "{:,}".format(total_views) }}</p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Total Interactions</p>
+    <p class="card-value">{{ "{:,}".format(total_interactions) }}</p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Engagement Rate</p>
+    <p class="card-value">{{ average_engagement_rate }}%</p>
+  </article>
+</section>
+
+<section class="posts-section">
+  <div class="section-heading">
+    <div>
+      <h2>Recent Posts</h2>
+      <p>Manual and API-imported content</p>
+    </div>
+  </div>
+
+  {% if posts %}
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Post</th>
+          <th>Platform</th>
+          <th>Source</th>
+          <th>Date</th>
+          <th>Views</th>
+          <th>Interactions</th>
+          <th>Engagement</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for post in posts %}
+        <tr>
+          <td>
+            <div class="post-cell">
+              {% if post.thumbnail_url %}
+              <img
+                class="post-thumbnail"
+                src="{{ post.thumbnail_url }}"
+                alt=""
+              />
+              {% endif %}
+
+              <div>
+                {% if post.external_url %}
+                <a
+                  class="post-title"
+                  href="{{ post.external_url }}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ post.caption }}
+                </a>
+                {% else %}
+                <span class="post-title"> {{ post.caption }} </span>
+                {% endif %}
+
+                <span class="post-type"> {{ post.content_type }} </span>
+              </div>
+            </div>
+          </td>
+
+          <td>{{ post.platform }}</td>
+
+          <td>
+            {% if post.source == "youtube_api" %}
+            <span class="badge badge-api"> YouTube API </span>
+            {% else %}
+            <span class="badge"> Manual </span>
+            {% endif %}
+          </td>
+
+          <td>{{ post.posted_at.strftime("%b %d, %Y") }}</td>
+
+          <td>{{ "{:,}".format(post.views) }}</td>
+
+          <td>{{ "{:,}".format(post.total_interactions) }}</td>
+
+          <td>
+            <strong> {{ post.engagement_rate }}% </strong>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <h2>No posts yet</h2>
+
+    <p>Add a post manually or import videos from YouTube.</p>
+
+    <div class="empty-actions">
+      <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
+
+      <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
+        Import YouTube
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

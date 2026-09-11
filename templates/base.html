@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>{% block title %} Social Media Analytics Tool {% endblock %}</title>
+
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+  </head>
+
+  <body>
+    <header class="site-header">
+      <nav class="navigation">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+          Social Analytics
+        </a>
+
+        <div class="nav-links">
+          <a href="{{ url_for('dashboard') }}"> Dashboard </a>
+
+          <a href="{{ url_for('add_post') }}"> Add Post </a>
+
+          <a href="{{ url_for('import_youtube') }}"> Import YouTube </a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page-container">{% block content %}{% endblock %}</main>
+  </body>
+</html>

@@ -1,0 +1,53 @@
+{% extends "base.html" %} {% block title %} Import YouTube | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<section class="form-page">
+  <div class="page-heading">
+    <div>
+      <h1>Import YouTube Channel</h1>
+
+      <p>
+        Import and update the 50 most recent public videos from a YouTube
+        channel.
+      </p>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="message error-message">{{ error }}</div>
+  {% endif %} {% if success %}
+  <div class="message success-message">{{ success }}</div>
+  {% endif %}
+
+  <form method="POST" class="data-form">
+    <div class="form-group">
+      <label for="channel_handle"> YouTube channel handle </label>
+
+      <input
+        id="channel_handle"
+        name="channel_handle"
+        type="text"
+        placeholder="@GoogleDevelopers"
+        required
+      />
+
+      <small> Enter the channel handle with or without the @ symbol. </small>
+    </div>
+
+    <div class="form-actions">
+      <a class="button button-secondary" href="{{ url_for('dashboard') }}">
+        Return to Dashboard
+      </a>
+
+      <button class="button" type="submit">Import Videos</button>
+    </div>
+  </form>
+
+  {% if success %}
+  <div class="next-step">
+    <a class="button" href="{{ url_for('dashboard') }}">
+      View Imported Videos
+    </a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
