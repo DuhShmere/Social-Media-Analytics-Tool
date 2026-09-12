@@ -409,3 +409,26 @@ select:focus {
     width: 100%;
   }
 }
+
+.account-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-handle {
+  color: var(--muted);
+}
+
+.account-actions {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.account-actions form {
+  margin: 0;
+}
+
+.account-actions .button {
+  width: 100%;
+}

@@ -1,0 +1,68 @@
+{% extends "base.html" %} {% block title %} Connected Accounts | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Connected Accounts</h1>
+
+    <p>View and synchronize your connected social-media accounts.</p>
+  </div>
+
+  <a class="button" href="{{ url_for('import_youtube') }}"> Import YouTube </a>
+</section>
+
+{% if social_accounts %}
+<section class="account-grid">
+  {% for account in social_accounts %}
+  <article class="account-card">
+    <div class="account-card-header">
+      <span class="account-platform"> {{ account.platform }} </span>
+    </div>
+
+    <h2>{{ account.account_name }}</h2>
+
+    {% if account.account_handle %}
+    <p class="account-handle">{{ account.account_handle }}</p>
+    {% endif %}
+
+    <dl class="account-details">
+      <div>
+        <dt>Imported posts</dt>
+        <dd>{{ account.posts | length }}</dd>
+      </div>
+
+      <div>
+        <dt>Last synchronized</dt>
+
+        <dd>
+          {% if account.last_synced_at %} {{ account.last_synced_at.strftime(
+          "%b %d, %Y at %I:%M %p" ) }} {% else %} Never {% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    <div class="account-actions">
+      {% if ( account.platform == "YouTube" and account.account_handle ) %}
+      <form method="POST" action="{{ url_for('import_youtube') }}">
+        <input
+          type="hidden"
+          name="channel_handle"
+          value="{{ account.account_handle }}"
+        />
+
+        <button class="button" type="submit">Sync Now</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+
+{% else %}
+<div class="empty-state">
+  <h2>No connected accounts</h2>
+
+  <p>Import a YouTube channel to create your first account.</p>
+
+  <a class="button" href="{{ url_for('import_youtube') }}"> Import YouTube </a>
+</div>
+{% endif %} {% endblock %}
