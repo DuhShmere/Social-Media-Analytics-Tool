@@ -432,3 +432,125 @@ select:focus {
 .account-actions .button {
   width: 100%;
 }
+.analytics-section {
+  margin-bottom: 36px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.analytics-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.analytics-heading h2 {
+  margin: 0 0 4px;
+}
+
+.analytics-heading p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.account-filter {
+  display: grid;
+  gap: 6px;
+  min-width: 260px;
+}
+
+.account-filter label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.analytics-status,
+.analytics-empty {
+  padding: 28px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.chart-panel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.chart-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-panel h3 {
+  margin: 0 0 18px;
+  font-size: 17px;
+}
+
+.chart-container {
+  position: relative;
+  height: 320px;
+}
+
+.chart-container-large {
+  height: 420px;
+}
+
+@media (max-width: 800px) {
+  .analytics-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-filter {
+    min-width: 0;
+  }
+
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-panel-wide {
+    grid-column: auto;
+  }
+}
+.post-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.delete-form {
+  margin: 0;
+}
+
+.table-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.table-action:hover {
+  text-decoration: underline;
+}
+
+.delete-action {
+  color: #b91c1c;
+}

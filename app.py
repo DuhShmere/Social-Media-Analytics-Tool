@@ -2,7 +2,14 @@ import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from googleapiclient.discovery import build
@@ -169,10 +176,13 @@ class Post(db.Model):
     )
 
     social_account_id = db.Column(
-    db.Integer,
-    db.ForeignKey("social_account.id"),
-    nullable=True,
-)
+        db.Integer,
+        db.ForeignKey(
+            "social_account.id",
+            name="fk_post_social_account_id",
+        ),
+        nullable=True,
+    )
 
     social_account = db.relationship(
         "SocialAccount",
@@ -253,6 +263,13 @@ def get_youtube_error_message(error):
     )
 
 
+def shorten_title(title, maximum_length=35):
+    if len(title) <= maximum_length:
+        return title
+
+    return f"{title[:maximum_length - 3]}..."
+
+
 # ---------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------
@@ -261,6 +278,11 @@ def get_youtube_error_message(error):
 def dashboard():
     posts = Post.query.order_by(
         Post.posted_at.desc()
+    ).all()
+
+    social_accounts = SocialAccount.query.order_by(
+        SocialAccount.platform,
+        SocialAccount.account_name,
     ).all()
 
     total_posts = len(posts)
@@ -287,10 +309,123 @@ def dashboard():
     return render_template(
         "dashboard.html",
         posts=posts,
+        social_accounts=social_accounts,
         total_posts=total_posts,
         total_views=total_views,
         total_interactions=total_interactions,
         average_engagement_rate=average_engagement_rate,
+    )
+
+
+# ---------------------------------------------------------
+# Analytics API
+# ---------------------------------------------------------
+
+@app.route("/api/analytics")
+def analytics_api():
+    account_id = request.args.get(
+        "account_id",
+        type=int,
+    )
+
+    query = Post.query
+
+    if account_id is not None:
+        query = query.filter(
+            Post.social_account_id == account_id
+        )
+
+    posts = query.all()
+
+    top_posts = sorted(
+        posts,
+        key=lambda post: post.views or 0,
+        reverse=True,
+    )[:10]
+
+    chronological_posts = sorted(
+        posts,
+        key=lambda post: post.posted_at,
+    )
+
+    likes = sum(
+        post.likes or 0
+        for post in posts
+    )
+
+    comments = sum(
+        post.comments or 0
+        for post in posts
+    )
+
+    shares = sum(
+        post.shares or 0
+        for post in posts
+    )
+
+    saves = sum(
+        post.saves or 0
+        for post in posts
+    )
+
+    total_views = sum(
+        post.views or 0
+        for post in posts
+    )
+
+    total_interactions = (
+        likes
+        + comments
+        + shares
+        + saves
+    )
+
+    overall_engagement_rate = (
+        round(
+            (total_interactions / total_views) * 100,
+            2,
+        )
+        if total_views > 0
+        else 0
+    )
+
+    return jsonify(
+        {
+            "summary": {
+                "total_posts": len(posts),
+                "total_views": total_views,
+                "total_interactions": total_interactions,
+                "engagement_rate": overall_engagement_rate,
+            },
+            "top_posts": [
+                {
+                    "title": post.caption,
+                    "short_title": shorten_title(
+                        post.caption
+                    ),
+                    "views": post.views or 0,
+                }
+                for post in top_posts
+            ],
+            "engagement_over_time": [
+                {
+                    "title": post.caption,
+                    "date": post.posted_at.strftime(
+                        "%b %d, %Y"
+                    ),
+                    "engagement_rate": (
+                        post.engagement_rate
+                    ),
+                }
+                for post in chronological_posts
+            ],
+            "interactions": {
+                "likes": likes,
+                "comments": comments,
+                "shares": shares,
+                "saves": saves,
+            },
+        }
     )
 
 
@@ -312,7 +447,7 @@ def accounts():
 
 
 # ---------------------------------------------------------
-# Manual post entry
+# Add a manual post
 # ---------------------------------------------------------
 
 @app.route("/add-post", methods=["GET", "POST"])
@@ -323,7 +458,9 @@ def add_post():
         try:
             platform = request.form["platform"].strip()
             caption = request.form["caption"].strip()
-            content_type = request.form["content_type"].strip()
+            content_type = request.form[
+                "content_type"
+            ].strip()
 
             posted_at = datetime.strptime(
                 request.form["posted_at"],
@@ -357,7 +494,9 @@ def add_post():
                 raise ValueError("Caption is required.")
 
             if not content_type:
-                raise ValueError("Content type is required.")
+                raise ValueError(
+                    "Content type is required."
+                )
 
             post = Post(
                 platform=platform,
@@ -396,7 +535,115 @@ def add_post():
 
 
 # ---------------------------------------------------------
-# YouTube import
+# Edit a manual post
+# ---------------------------------------------------------
+
+@app.route(
+    "/posts/<int:post_id>/edit",
+    methods=["GET", "POST"],
+)
+def edit_post(post_id):
+    post = db.get_or_404(Post, post_id)
+
+    # YouTube posts must be updated through synchronization.
+    if post.source != "manual":
+        return redirect(url_for("dashboard"))
+
+    error = None
+
+    if request.method == "POST":
+        try:
+            platform = request.form["platform"].strip()
+            caption = request.form["caption"].strip()
+            content_type = request.form[
+                "content_type"
+            ].strip()
+
+            posted_at = datetime.strptime(
+                request.form["posted_at"],
+                "%Y-%m-%dT%H:%M",
+            )
+
+            views = parse_non_negative_integer(
+                request.form.get("views")
+            )
+
+            likes = parse_non_negative_integer(
+                request.form.get("likes")
+            )
+
+            comments = parse_non_negative_integer(
+                request.form.get("comments")
+            )
+
+            shares = parse_non_negative_integer(
+                request.form.get("shares")
+            )
+
+            saves = parse_non_negative_integer(
+                request.form.get("saves")
+            )
+
+            if not platform:
+                raise ValueError("Platform is required.")
+
+            if not caption:
+                raise ValueError("Caption is required.")
+
+            if not content_type:
+                raise ValueError(
+                    "Content type is required."
+                )
+
+            post.platform = platform
+            post.caption = caption
+            post.content_type = content_type
+            post.posted_at = posted_at
+            post.views = views
+            post.likes = likes
+            post.comments = comments
+            post.shares = shares
+            post.saves = saves
+
+            db.session.commit()
+
+            return redirect(url_for("dashboard"))
+
+        except (ValueError, KeyError):
+            db.session.rollback()
+
+            error = (
+                "Please complete every required field and use "
+                "non-negative numbers for all metrics."
+            )
+
+    return render_template(
+        "edit_post.html",
+        post=post,
+        error=error,
+    )
+
+
+# ---------------------------------------------------------
+# Delete a manual post
+# ---------------------------------------------------------
+
+@app.post("/posts/<int:post_id>/delete")
+def delete_post(post_id):
+    post = db.get_or_404(Post, post_id)
+
+    # Imported posts must be managed through their platform.
+    if post.source != "manual":
+        return redirect(url_for("dashboard"))
+
+    db.session.delete(post)
+    db.session.commit()
+
+    return redirect(url_for("dashboard"))
+
+
+# ---------------------------------------------------------
+# YouTube import and synchronization
 # ---------------------------------------------------------
 
 @app.route("/import-youtube", methods=["GET", "POST"])
@@ -424,7 +671,6 @@ def import_youtube():
             error="Enter a YouTube channel handle.",
         )
 
-    # Accept @GoogleDevelopers or GoogleDevelopers.
     channel_handle = channel_handle.lstrip("@")
 
     try:
@@ -435,7 +681,6 @@ def import_youtube():
             cache_discovery=False,
         )
 
-        # Retrieve the channel.
         channel_response = youtube.channels().list(
             part="snippet,contentDetails,statistics",
             forHandle=channel_handle,
@@ -459,7 +704,6 @@ def import_youtube():
         channel_name = channel["snippet"]["title"]
         channel_handle_with_at = f"@{channel_handle}"
 
-        # Find or create the connected account.
         social_account = SocialAccount.query.filter_by(
             platform="YouTube",
             external_account_id=channel_id,
@@ -485,14 +729,12 @@ def import_youtube():
             timezone.utc
         ).replace(tzinfo=None)
 
-        # Create an account ID before connecting posts.
         db.session.flush()
 
         uploads_playlist_id = channel[
             "contentDetails"
         ]["relatedPlaylists"]["uploads"]
 
-        # Get the channel's 50 most recent video IDs.
         playlist_response = youtube.playlistItems().list(
             part="contentDetails",
             playlistId=uploads_playlist_id,
@@ -515,7 +757,6 @@ def import_youtube():
                 ),
             )
 
-        # Retrieve the video details and statistics.
         video_response = youtube.videos().list(
             part="snippet,statistics",
             id=",".join(video_ids),
@@ -527,7 +768,10 @@ def import_youtube():
         for video in video_response.get("items", []):
             video_id = video["id"]
             snippet = video.get("snippet", {})
-            statistics = video.get("statistics", {})
+            statistics = video.get(
+                "statistics",
+                {},
+            )
 
             published_at = datetime.fromisoformat(
                 snippet["publishedAt"].replace(
@@ -540,7 +784,6 @@ def import_youtube():
                 snippet.get("thumbnails", {})
             )
 
-            # Find an existing YouTube video.
             post = Post.query.filter_by(
                 platform="YouTube",
                 external_id=video_id,
@@ -571,7 +814,6 @@ def import_youtube():
             else:
                 updated_count += 1
 
-            # Update the post with current YouTube data.
             post.platform = "YouTube"
 
             post.caption = snippet.get(
@@ -594,7 +836,6 @@ def import_youtube():
                 statistics.get("commentCount", 0)
             )
 
-            # Public YouTube statistics do not include these.
             post.shares = 0
             post.saves = 0
 
@@ -646,7 +887,7 @@ def import_youtube():
 
 
 # ---------------------------------------------------------
-# Start the application
+# Start application
 # ---------------------------------------------------------
 
 if __name__ == "__main__":

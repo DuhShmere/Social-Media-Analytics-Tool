@@ -4,7 +4,7 @@ Tool {% endblock %} {% block content %}
   <div>
     <h1>Analytics Dashboard</h1>
 
-    <p>Track and compare your social media performance.</p>
+    <p>Track and compare your social-media performance.</p>
   </div>
 
   <div class="heading-actions">
@@ -19,23 +19,105 @@ Tool {% endblock %} {% block content %}
 <section class="summary-grid">
   <article class="summary-card">
     <p class="card-label">Total Posts</p>
-    <p class="card-value">{{ total_posts }}</p>
+
+    <p id="total-posts" class="card-value">{{ total_posts }}</p>
   </article>
 
   <article class="summary-card">
     <p class="card-label">Total Views</p>
-    <p class="card-value">{{ "{:,}".format(total_views) }}</p>
+
+    <p id="total-views" class="card-value">{{ "{:,}".format(total_views) }}</p>
   </article>
 
   <article class="summary-card">
     <p class="card-label">Total Interactions</p>
-    <p class="card-value">{{ "{:,}".format(total_interactions) }}</p>
+
+    <p id="total-interactions" class="card-value">
+      {{ "{:,}".format(total_interactions) }}
+    </p>
   </article>
 
   <article class="summary-card">
     <p class="card-label">Engagement Rate</p>
-    <p class="card-value">{{ average_engagement_rate }}%</p>
+
+    <p id="engagement-rate" class="card-value">
+      {{ average_engagement_rate }}%
+    </p>
   </article>
+</section>
+
+<section
+  id="analytics-dashboard"
+  class="analytics-section"
+  data-api-url="{{ url_for('analytics_api') }}"
+>
+  <div class="analytics-heading">
+    <div>
+      <h2>Performance Analytics</h2>
+
+      <p>Explore views and engagement across your content.</p>
+    </div>
+
+    <div class="account-filter">
+      <label for="account-select"> Account </label>
+
+      <select id="account-select">
+        <option value="">All posts and accounts</option>
+
+        {% for account in social_accounts %}
+        <option value="{{ account.id }}">
+          {{ account.platform }} — {{ account.account_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <p id="analytics-status" class="analytics-status" aria-live="polite">
+    Loading analytics…
+  </p>
+
+  <div id="analytics-empty" class="analytics-empty" hidden>
+    No posts are available for this account.
+  </div>
+
+  <div id="chart-grid" class="chart-grid" hidden>
+    <article class="chart-panel chart-panel-wide">
+      <h3>Top Videos by Views</h3>
+
+      <div class="chart-container chart-container-large">
+        <canvas
+          id="views-chart"
+          role="img"
+          aria-label="Bar chart showing views for the top posts"
+        ></canvas>
+      </div>
+    </article>
+
+    <article class="chart-panel">
+      <h3>Engagement Over Time</h3>
+
+      <div class="chart-container">
+        <canvas
+          id="engagement-chart"
+          role="img"
+          aria-label="Line chart showing engagement rate over time"
+        ></canvas>
+      </div>
+    </article>
+
+    <article class="chart-panel">
+      <h3>Interaction Breakdown</h3>
+
+      <div class="chart-container">
+        <canvas
+          id="interactions-chart"
+          role="img"
+          aria-label="Doughnut chart comparing interaction types"
+        ></canvas>
+      </div>
+    </article>
+  </div>
 </section>
 
 <section class="posts-section">
@@ -53,11 +135,13 @@ Tool {% endblock %} {% block content %}
         <tr>
           <th>Post</th>
           <th>Platform</th>
+          <th>Account</th>
           <th>Source</th>
           <th>Date</th>
           <th>Views</th>
           <th>Interactions</th>
           <th>Engagement</th>
+          <th>Actions</th>
         </tr>
       </thead>
 
@@ -96,6 +180,11 @@ Tool {% endblock %} {% block content %}
           <td>{{ post.platform }}</td>
 
           <td>
+            {% if post.social_account %} {{ post.social_account.account_name }}
+            {% else %} Manual {% endif %}
+          </td>
+
+          <td>
             {% if post.source == "youtube_api" %}
             <span class="badge badge-api"> YouTube API </span>
             {% else %}
@@ -111,6 +200,47 @@ Tool {% endblock %} {% block content %}
 
           <td>
             <strong> {{ post.engagement_rate }}% </strong>
+          </td>
+
+          <td>
+            {% if post.source == "manual" %}
+            <div class="post-actions">
+              <a
+                class="table-action"
+                href="{{ url_for(
+                          'edit_post',
+                          post_id=post.id
+                        ) }}"
+              >
+                Edit
+              </a>
+
+              <form
+                class="delete-form"
+                method="POST"
+                action="{{ url_for(
+                          'delete_post',
+                          post_id=post.id
+                        ) }}"
+                data-post-title="{{ post.caption }}"
+              >
+                <button class="table-action delete-action" type="submit">
+                  Delete
+                </button>
+              </form>
+            </div>
+
+            {% elif post.external_url %}
+            <a
+              class="table-action"
+              href="{{ post.external_url }}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View
+            </a>
+
+            {% else %} — {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -134,4 +264,8 @@ Tool {% endblock %} {% block content %}
   </div>
   {% endif %}
 </section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
