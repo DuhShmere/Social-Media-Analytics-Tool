@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, url_for
@@ -9,11 +9,14 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 
-# Load variables from the .env file.
+# ---------------------------------------------------------
+# Application setup
+# ---------------------------------------------------------
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
-load_dotenv(ENV_PATH)
 
+load_dotenv(ENV_PATH)
 
 app = Flask(__name__)
 
@@ -26,11 +29,66 @@ migrate = Migrate(app, db)
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 
-class Post(db.Model):
+# ---------------------------------------------------------
+# Database models
+# ---------------------------------------------------------
+
+class SocialAccount(db.Model):
+    __tablename__ = "social_account"
+
     __table_args__ = (
         db.UniqueConstraint(
+            "platform",
+            "external_account_id",
+            name="uq_social_account_platform_external_id",
+        ),
+    )
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True,
+    )
+
+    platform = db.Column(
+        db.String(50),
+        nullable=False,
+    )
+
+    account_name = db.Column(
+        db.String(150),
+        nullable=False,
+    )
+
+    account_handle = db.Column(
+        db.String(150),
+        nullable=True,
+    )
+
+    external_account_id = db.Column(
+        db.String(150),
+        nullable=False,
+    )
+
+    last_synced_at = db.Column(
+        db.DateTime,
+        nullable=True,
+    )
+
+    posts = db.relationship(
+        "Post",
+        back_populates="social_account",
+        lazy=True,
+    )
+
+
+class Post(db.Model):
+    __tablename__ = "post"
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "platform",
             "external_id",
-            name="uq_post_external_id",
+            name="uq_post_platform_external_id",
         ),
     )
 
@@ -89,29 +147,36 @@ class Post(db.Model):
         default=0,
     )
 
-    # ID supplied by YouTube or another external platform.
     external_id = db.Column(
         db.String(150),
         nullable=True,
     )
 
-    # Link to the original social-media post.
     external_url = db.Column(
         db.String(500),
         nullable=True,
     )
 
-    # Thumbnail returned by the external API.
     thumbnail_url = db.Column(
         db.String(500),
         nullable=True,
     )
 
-    # Either "manual" or "youtube_api".
     source = db.Column(
         db.String(30),
         nullable=False,
         default="manual",
+    )
+
+    social_account_id = db.Column(
+    db.Integer,
+    db.ForeignKey("social_account.id"),
+    nullable=True,
+)
+
+    social_account = db.relationship(
+        "SocialAccount",
+        back_populates="posts",
     )
 
     @property
@@ -133,6 +198,10 @@ class Post(db.Model):
             2,
         )
 
+
+# ---------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------
 
 def parse_non_negative_integer(value):
     if value is None or value.strip() == "":
@@ -184,6 +253,10 @@ def get_youtube_error_message(error):
     )
 
 
+# ---------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------
+
 @app.route("/")
 def dashboard():
     posts = Post.query.order_by(
@@ -220,6 +293,27 @@ def dashboard():
         average_engagement_rate=average_engagement_rate,
     )
 
+
+# ---------------------------------------------------------
+# Connected accounts
+# ---------------------------------------------------------
+
+@app.route("/accounts")
+def accounts():
+    social_accounts = SocialAccount.query.order_by(
+        SocialAccount.platform,
+        SocialAccount.account_name,
+    ).all()
+
+    return render_template(
+        "accounts.html",
+        social_accounts=social_accounts,
+    )
+
+
+# ---------------------------------------------------------
+# Manual post entry
+# ---------------------------------------------------------
 
 @app.route("/add-post", methods=["GET", "POST"])
 def add_post():
@@ -279,6 +373,7 @@ def add_post():
                 external_url=None,
                 thumbnail_url=None,
                 source="manual",
+                social_account_id=None,
             )
 
             db.session.add(post)
@@ -299,6 +394,10 @@ def add_post():
         error=error,
     )
 
+
+# ---------------------------------------------------------
+# YouTube import
+# ---------------------------------------------------------
 
 @app.route("/import-youtube", methods=["GET", "POST"])
 def import_youtube():
@@ -325,7 +424,7 @@ def import_youtube():
             error="Enter a YouTube channel handle.",
         )
 
-    # Allows either @GoogleDevelopers or GoogleDevelopers.
+    # Accept @GoogleDevelopers or GoogleDevelopers.
     channel_handle = channel_handle.lstrip("@")
 
     try:
@@ -336,7 +435,7 @@ def import_youtube():
             cache_discovery=False,
         )
 
-        # Find the channel and its uploads playlist.
+        # Retrieve the channel.
         channel_response = youtube.channels().list(
             part="snippet,contentDetails,statistics",
             forHandle=channel_handle,
@@ -355,13 +454,45 @@ def import_youtube():
             )
 
         channel = channels[0]
+
+        channel_id = channel["id"]
         channel_name = channel["snippet"]["title"]
+        channel_handle_with_at = f"@{channel_handle}"
+
+        # Find or create the connected account.
+        social_account = SocialAccount.query.filter_by(
+            platform="YouTube",
+            external_account_id=channel_id,
+        ).first()
+
+        if social_account is None:
+            social_account = SocialAccount(
+                platform="YouTube",
+                account_name=channel_name,
+                account_handle=channel_handle_with_at,
+                external_account_id=channel_id,
+            )
+
+            db.session.add(social_account)
+
+        else:
+            social_account.account_name = channel_name
+            social_account.account_handle = (
+                channel_handle_with_at
+            )
+
+        social_account.last_synced_at = datetime.now(
+            timezone.utc
+        ).replace(tzinfo=None)
+
+        # Create an account ID before connecting posts.
+        db.session.flush()
 
         uploads_playlist_id = channel[
             "contentDetails"
         ]["relatedPlaylists"]["uploads"]
 
-        # Retrieve the 50 most recent uploaded video IDs.
+        # Get the channel's 50 most recent video IDs.
         playlist_response = youtube.playlistItems().list(
             part="contentDetails",
             playlistId=uploads_playlist_id,
@@ -374,6 +505,8 @@ def import_youtube():
         ]
 
         if not video_ids:
+            db.session.rollback()
+
             return render_template(
                 "import_youtube.html",
                 error=(
@@ -382,7 +515,7 @@ def import_youtube():
                 ),
             )
 
-        # Retrieve details and statistics for the videos.
+        # Retrieve the video details and statistics.
         video_response = youtube.videos().list(
             part="snippet,statistics",
             id=",".join(video_ids),
@@ -407,9 +540,10 @@ def import_youtube():
                 snippet.get("thumbnails", {})
             )
 
-            # external_id prevents duplicate imports.
+            # Find an existing YouTube video.
             post = Post.query.filter_by(
-                external_id=video_id
+                platform="YouTube",
+                external_id=video_id,
             ).first()
 
             if post is None:
@@ -428,6 +562,7 @@ def import_youtube():
                     saves=0,
                     external_id=video_id,
                     source="youtube_api",
+                    social_account=social_account,
                 )
 
                 db.session.add(post)
@@ -436,7 +571,7 @@ def import_youtube():
             else:
                 updated_count += 1
 
-            # Update the post with the latest information.
+            # Update the post with current YouTube data.
             post.platform = "YouTube"
 
             post.caption = snippet.get(
@@ -459,7 +594,7 @@ def import_youtube():
                 statistics.get("commentCount", 0)
             )
 
-            # Public YouTube data does not include these.
+            # Public YouTube statistics do not include these.
             post.shares = 0
             post.saves = 0
 
@@ -469,6 +604,7 @@ def import_youtube():
 
             post.thumbnail_url = thumbnail_url
             post.source = "youtube_api"
+            post.social_account = social_account
 
         db.session.commit()
 
@@ -508,6 +644,10 @@ def import_youtube():
             ),
         )
 
+
+# ---------------------------------------------------------
+# Start the application
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
     with app.app_context():

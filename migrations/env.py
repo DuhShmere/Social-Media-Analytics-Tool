@@ -51,6 +51,7 @@ def get_metadata():
     return target_db.metadata
 
 
+
 def run_migrations_offline():
     """Run migrations in 'offline' mode.
 
