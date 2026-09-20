@@ -1,9 +1,13 @@
+import csv
+import hashlib
+import io
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from flask import (
     Flask,
+    Response,
     jsonify,
     redirect,
     render_template,
@@ -27,8 +31,12 @@ load_dotenv(ENV_PATH)
 
 app = Flask(__name__)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tracker.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///tracker.db",
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -51,35 +59,15 @@ class SocialAccount(db.Model):
         ),
     )
 
-    id = db.Column(
-        db.Integer,
-        primary_key=True,
-    )
-
-    platform = db.Column(
-        db.String(50),
-        nullable=False,
-    )
-
-    account_name = db.Column(
-        db.String(150),
-        nullable=False,
-    )
-
-    account_handle = db.Column(
-        db.String(150),
-        nullable=True,
-    )
-
+    id = db.Column(db.Integer, primary_key=True)
+    platform = db.Column(db.String(50), nullable=False)
+    account_name = db.Column(db.String(150), nullable=False)
+    account_handle = db.Column(db.String(150))
     external_account_id = db.Column(
         db.String(150),
         nullable=False,
     )
-
-    last_synced_at = db.Column(
-        db.DateTime,
-        nullable=True,
-    )
+    last_synced_at = db.Column(db.DateTime)
 
     posts = db.relationship(
         "Post",
@@ -99,75 +87,27 @@ class Post(db.Model):
         ),
     )
 
-    id = db.Column(
-        db.Integer,
-        primary_key=True,
-    )
-
-    platform = db.Column(
-        db.String(50),
-        nullable=False,
-    )
-
-    caption = db.Column(
-        db.String(300),
-        nullable=False,
-    )
-
+    id = db.Column(db.Integer, primary_key=True)
+    platform = db.Column(db.String(50), nullable=False)
+    caption = db.Column(db.String(300), nullable=False)
     content_type = db.Column(
         db.String(50),
         nullable=False,
     )
-
-    posted_at = db.Column(
-        db.DateTime,
-        nullable=False,
-    )
-
-    views = db.Column(
-        db.Integer,
-        nullable=False,
-        default=0,
-    )
-
-    likes = db.Column(
-        db.Integer,
-        nullable=False,
-        default=0,
-    )
-
+    posted_at = db.Column(db.DateTime, nullable=False)
+    views = db.Column(db.Integer, nullable=False, default=0)
+    likes = db.Column(db.Integer, nullable=False, default=0)
     comments = db.Column(
         db.Integer,
         nullable=False,
         default=0,
     )
+    shares = db.Column(db.Integer, nullable=False, default=0)
+    saves = db.Column(db.Integer, nullable=False, default=0)
 
-    shares = db.Column(
-        db.Integer,
-        nullable=False,
-        default=0,
-    )
-
-    saves = db.Column(
-        db.Integer,
-        nullable=False,
-        default=0,
-    )
-
-    external_id = db.Column(
-        db.String(150),
-        nullable=True,
-    )
-
-    external_url = db.Column(
-        db.String(500),
-        nullable=True,
-    )
-
-    thumbnail_url = db.Column(
-        db.String(500),
-        nullable=True,
-    )
+    external_id = db.Column(db.String(150))
+    external_url = db.Column(db.String(500))
+    thumbnail_url = db.Column(db.String(500))
 
     source = db.Column(
         db.String(30),
@@ -181,7 +121,6 @@ class Post(db.Model):
             "social_account.id",
             name="fk_post_social_account_id",
         ),
-        nullable=True,
     )
 
     social_account = db.relationship(
@@ -208,21 +147,75 @@ class Post(db.Model):
             2,
         )
 
+    @property
+    def is_editable(self):
+        return self.source in {
+            "manual",
+            "csv_import",
+        }
+
 
 # ---------------------------------------------------------
-# Helper functions
+# General helper functions
 # ---------------------------------------------------------
 
 def parse_non_negative_integer(value):
-    if value is None or value.strip() == "":
+    if value is None or str(value).strip() == "":
         return 0
 
-    number = int(value)
+    number = int(str(value).strip())
 
     if number < 0:
         raise ValueError("Metrics cannot be negative.")
 
     return number
+
+
+def parse_csv_datetime(value):
+    value = value.strip()
+
+    if not value:
+        raise ValueError("posted_at is required.")
+
+    parsed = datetime.fromisoformat(
+        value.replace("Z", "+00:00")
+    )
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(
+            timezone.utc
+        ).replace(tzinfo=None)
+
+    return parsed
+
+
+def generate_csv_external_id(
+    platform,
+    caption,
+    content_type,
+    posted_at,
+):
+    identifying_value = "|".join(
+        [
+            platform.lower(),
+            caption.lower(),
+            content_type.lower(),
+            posted_at.isoformat(),
+        ]
+    )
+
+    digest = hashlib.sha256(
+        identifying_value.encode("utf-8")
+    ).hexdigest()
+
+    return f"csv-{digest[:32]}"
+
+
+def validate_text_length(value, field_name, limit):
+    if len(value) > limit:
+        raise ValueError(
+            f"{field_name} cannot exceed {limit} characters."
+        )
 
 
 def get_thumbnail_url(thumbnails):
@@ -270,6 +263,192 @@ def shorten_title(title, maximum_length=35):
     return f"{title[:maximum_length - 3]}..."
 
 
+def format_hour(hour):
+    time_value = datetime.strptime(
+        str(hour),
+        "%H",
+    )
+
+    return time_value.strftime(
+        "%I:%M %p"
+    ).lstrip("0")
+
+
+def calculate_best_posting_time(
+    posts,
+    minimum_sample_size=3,
+):
+    groups = {}
+
+    for post in posts:
+        if not post.posted_at:
+            continue
+
+        weekday_number = post.posted_at.weekday()
+        weekday_name = post.posted_at.strftime("%A")
+        window_start = (post.posted_at.hour // 3) * 3
+
+        key = (
+            weekday_number,
+            weekday_name,
+            window_start,
+        )
+
+        if key not in groups:
+            groups[key] = {
+                "posts": 0,
+                "views": 0,
+                "interactions": 0,
+            }
+
+        groups[key]["posts"] += 1
+        groups[key]["views"] += post.views or 0
+        groups[key]["interactions"] += (
+            post.total_interactions
+        )
+
+    eligible_groups = []
+
+    for key, values in groups.items():
+        if values["posts"] < minimum_sample_size:
+            continue
+
+        if values["views"] <= 0:
+            continue
+
+        engagement_rate = round(
+            (
+                values["interactions"]
+                / values["views"]
+            ) * 100,
+            2,
+        )
+
+        eligible_groups.append(
+            {
+                "weekday_number": key[0],
+                "day": key[1],
+                "window_start": key[2],
+                "sample_size": values["posts"],
+                "engagement_rate": engagement_rate,
+            }
+        )
+
+    if not eligible_groups:
+        largest_group_size = max(
+            (
+                values["posts"]
+                for values in groups.values()
+            ),
+            default=0,
+        )
+
+        return {
+            "available": False,
+            "minimum_sample_size": minimum_sample_size,
+            "largest_group_size": largest_group_size,
+        }
+
+    best_group = max(
+        eligible_groups,
+        key=lambda group: (
+            group["engagement_rate"],
+            group["sample_size"],
+        ),
+    )
+
+    start_hour = best_group["window_start"]
+    end_hour = start_hour + 2
+
+    return {
+        "available": True,
+        "day": best_group["day"],
+        "time_window": (
+            f"{format_hour(start_hour)} – "
+            f"{format_hour(end_hour)}"
+        ),
+        "engagement_rate": best_group["engagement_rate"],
+        "sample_size": best_group["sample_size"],
+    }
+
+
+def apply_post_filters(query):
+    account_id = request.args.get(
+        "account_id",
+        type=int,
+    )
+
+    search_term = request.args.get(
+        "search",
+        "",
+    ).strip()
+
+    platform = request.args.get(
+        "platform",
+        "",
+    ).strip()
+
+    content_type = request.args.get(
+        "content_type",
+        "",
+    ).strip()
+
+    start_date_value = request.args.get(
+        "start_date",
+        "",
+    ).strip()
+
+    end_date_value = request.args.get(
+        "end_date",
+        "",
+    ).strip()
+
+    if account_id is not None:
+        query = query.filter(
+            Post.social_account_id == account_id
+        )
+
+    if search_term:
+        query = query.filter(
+            Post.caption.ilike(
+                f"%{search_term}%"
+            )
+        )
+
+    if platform:
+        query = query.filter(
+            Post.platform == platform
+        )
+
+    if content_type:
+        query = query.filter(
+            Post.content_type == content_type
+        )
+
+    if start_date_value:
+        start_date = datetime.strptime(
+            start_date_value,
+            "%Y-%m-%d",
+        )
+
+        query = query.filter(
+            Post.posted_at >= start_date
+        )
+
+    if end_date_value:
+        end_date = datetime.strptime(
+            end_date_value,
+            "%Y-%m-%d",
+        )
+
+        query = query.filter(
+            Post.posted_at
+            < end_date + timedelta(days=1)
+        )
+
+    return query
+
+
 # ---------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------
@@ -284,6 +463,22 @@ def dashboard():
         SocialAccount.platform,
         SocialAccount.account_name,
     ).all()
+
+    platforms = sorted(
+        {
+            post.platform
+            for post in posts
+            if post.platform
+        }
+    )
+
+    content_types = sorted(
+        {
+            post.content_type
+            for post in posts
+            if post.content_type
+        }
+    )
 
     total_posts = len(posts)
 
@@ -310,6 +505,8 @@ def dashboard():
         "dashboard.html",
         posts=posts,
         social_accounts=social_accounts,
+        platforms=platforms,
+        content_types=content_types,
         total_posts=total_posts,
         total_views=total_views,
         total_interactions=total_interactions,
@@ -323,17 +520,14 @@ def dashboard():
 
 @app.route("/api/analytics")
 def analytics_api():
-    account_id = request.args.get(
-        "account_id",
-        type=int,
-    )
-
-    query = Post.query
-
-    if account_id is not None:
-        query = query.filter(
-            Post.social_account_id == account_id
-        )
+    try:
+        query = apply_post_filters(Post.query)
+    except ValueError:
+        return jsonify(
+            {
+                "error": "Invalid date filter.",
+            }
+        ), 400
 
     posts = query.all()
 
@@ -348,30 +542,11 @@ def analytics_api():
         key=lambda post: post.posted_at,
     )
 
-    likes = sum(
-        post.likes or 0
-        for post in posts
-    )
-
-    comments = sum(
-        post.comments or 0
-        for post in posts
-    )
-
-    shares = sum(
-        post.shares or 0
-        for post in posts
-    )
-
-    saves = sum(
-        post.saves or 0
-        for post in posts
-    )
-
-    total_views = sum(
-        post.views or 0
-        for post in posts
-    )
+    likes = sum(post.likes or 0 for post in posts)
+    comments = sum(post.comments or 0 for post in posts)
+    shares = sum(post.shares or 0 for post in posts)
+    saves = sum(post.saves or 0 for post in posts)
+    total_views = sum(post.views or 0 for post in posts)
 
     total_interactions = (
         likes
@@ -389,6 +564,8 @@ def analytics_api():
         else 0
     )
 
+    best_time = calculate_best_posting_time(posts)
+
     return jsonify(
         {
             "summary": {
@@ -397,6 +574,7 @@ def analytics_api():
                 "total_interactions": total_interactions,
                 "engagement_rate": overall_engagement_rate,
             },
+            "best_time": best_time,
             "top_posts": [
                 {
                     "title": post.caption,
@@ -413,9 +591,7 @@ def analytics_api():
                     "date": post.posted_at.strftime(
                         "%b %d, %Y"
                     ),
-                    "engagement_rate": (
-                        post.engagement_rate
-                    ),
+                    "engagement_rate": post.engagement_rate,
                 }
                 for post in chronological_posts
             ],
@@ -447,7 +623,7 @@ def accounts():
 
 
 # ---------------------------------------------------------
-# Add a manual post
+# Add manual post
 # ---------------------------------------------------------
 
 @app.route("/add-post", methods=["GET", "POST"])
@@ -467,35 +643,9 @@ def add_post():
                 "%Y-%m-%dT%H:%M",
             )
 
-            views = parse_non_negative_integer(
-                request.form.get("views")
-            )
-
-            likes = parse_non_negative_integer(
-                request.form.get("likes")
-            )
-
-            comments = parse_non_negative_integer(
-                request.form.get("comments")
-            )
-
-            shares = parse_non_negative_integer(
-                request.form.get("shares")
-            )
-
-            saves = parse_non_negative_integer(
-                request.form.get("saves")
-            )
-
-            if not platform:
-                raise ValueError("Platform is required.")
-
-            if not caption:
-                raise ValueError("Caption is required.")
-
-            if not content_type:
+            if not platform or not caption or not content_type:
                 raise ValueError(
-                    "Content type is required."
+                    "Required fields are missing."
                 )
 
             post = Post(
@@ -503,16 +653,22 @@ def add_post():
                 caption=caption,
                 content_type=content_type,
                 posted_at=posted_at,
-                views=views,
-                likes=likes,
-                comments=comments,
-                shares=shares,
-                saves=saves,
-                external_id=None,
-                external_url=None,
-                thumbnail_url=None,
+                views=parse_non_negative_integer(
+                    request.form.get("views")
+                ),
+                likes=parse_non_negative_integer(
+                    request.form.get("likes")
+                ),
+                comments=parse_non_negative_integer(
+                    request.form.get("comments")
+                ),
+                shares=parse_non_negative_integer(
+                    request.form.get("shares")
+                ),
+                saves=parse_non_negative_integer(
+                    request.form.get("saves")
+                ),
                 source="manual",
-                social_account_id=None,
             )
 
             db.session.add(post)
@@ -535,7 +691,7 @@ def add_post():
 
 
 # ---------------------------------------------------------
-# Edit a manual post
+# Edit manual or CSV post
 # ---------------------------------------------------------
 
 @app.route(
@@ -545,8 +701,7 @@ def add_post():
 def edit_post(post_id):
     post = db.get_or_404(Post, post_id)
 
-    # YouTube posts must be updated through synchronization.
-    if post.source != "manual":
+    if not post.is_editable:
         return redirect(url_for("dashboard"))
 
     error = None
@@ -564,46 +719,30 @@ def edit_post(post_id):
                 "%Y-%m-%dT%H:%M",
             )
 
-            views = parse_non_negative_integer(
-                request.form.get("views")
-            )
-
-            likes = parse_non_negative_integer(
-                request.form.get("likes")
-            )
-
-            comments = parse_non_negative_integer(
-                request.form.get("comments")
-            )
-
-            shares = parse_non_negative_integer(
-                request.form.get("shares")
-            )
-
-            saves = parse_non_negative_integer(
-                request.form.get("saves")
-            )
-
-            if not platform:
-                raise ValueError("Platform is required.")
-
-            if not caption:
-                raise ValueError("Caption is required.")
-
-            if not content_type:
+            if not platform or not caption or not content_type:
                 raise ValueError(
-                    "Content type is required."
+                    "Required fields are missing."
                 )
 
             post.platform = platform
             post.caption = caption
             post.content_type = content_type
             post.posted_at = posted_at
-            post.views = views
-            post.likes = likes
-            post.comments = comments
-            post.shares = shares
-            post.saves = saves
+            post.views = parse_non_negative_integer(
+                request.form.get("views")
+            )
+            post.likes = parse_non_negative_integer(
+                request.form.get("likes")
+            )
+            post.comments = parse_non_negative_integer(
+                request.form.get("comments")
+            )
+            post.shares = parse_non_negative_integer(
+                request.form.get("shares")
+            )
+            post.saves = parse_non_negative_integer(
+                request.form.get("saves")
+            )
 
             db.session.commit()
 
@@ -625,21 +764,402 @@ def edit_post(post_id):
 
 
 # ---------------------------------------------------------
-# Delete a manual post
+# Delete manual or CSV post
 # ---------------------------------------------------------
 
 @app.post("/posts/<int:post_id>/delete")
 def delete_post(post_id):
     post = db.get_or_404(Post, post_id)
 
-    # Imported posts must be managed through their platform.
-    if post.source != "manual":
+    if not post.is_editable:
         return redirect(url_for("dashboard"))
 
     db.session.delete(post)
     db.session.commit()
 
     return redirect(url_for("dashboard"))
+
+
+# ---------------------------------------------------------
+# CSV import
+# ---------------------------------------------------------
+
+@app.route("/import-csv", methods=["GET", "POST"])
+def import_csv():
+    required_columns = {
+        "platform",
+        "caption",
+        "content_type",
+        "posted_at",
+        "views",
+        "likes",
+        "comments",
+        "shares",
+        "saves",
+    }
+
+    if request.method == "GET":
+        return render_template("import_csv.html")
+
+    uploaded_file = request.files.get("csv_file")
+
+    if not uploaded_file or not uploaded_file.filename:
+        return render_template(
+            "import_csv.html",
+            error="Select a CSV file to upload.",
+        )
+
+    if not uploaded_file.filename.lower().endswith(".csv"):
+        return render_template(
+            "import_csv.html",
+            error="The uploaded file must be a CSV file.",
+        )
+
+    try:
+        text_stream = io.TextIOWrapper(
+            uploaded_file.stream,
+            encoding="utf-8-sig",
+            newline="",
+        )
+
+        reader = csv.DictReader(text_stream)
+
+        if not reader.fieldnames:
+            raise ValueError(
+                "The CSV file does not contain a header row."
+            )
+
+        fieldnames = {
+            field.strip()
+            for field in reader.fieldnames
+            if field
+        }
+
+        missing_columns = required_columns - fieldnames
+
+        if missing_columns:
+            missing_text = ", ".join(
+                sorted(missing_columns)
+            )
+
+            raise ValueError(
+                f"Missing required columns: {missing_text}"
+            )
+
+        imported_count = 0
+        skipped_count = 0
+        row_errors = []
+
+        for row_number, row in enumerate(
+            reader,
+            start=2,
+        ):
+            try:
+                platform = row.get(
+                    "platform",
+                    "",
+                ).strip()
+
+                caption = row.get(
+                    "caption",
+                    "",
+                ).strip()
+
+                content_type = row.get(
+                    "content_type",
+                    "",
+                ).strip()
+
+                if not platform:
+                    raise ValueError(
+                        "platform is required."
+                    )
+
+                if not caption:
+                    raise ValueError(
+                        "caption is required."
+                    )
+
+                if not content_type:
+                    raise ValueError(
+                        "content_type is required."
+                    )
+
+                validate_text_length(
+                    platform,
+                    "platform",
+                    50,
+                )
+
+                validate_text_length(
+                    caption,
+                    "caption",
+                    300,
+                )
+
+                validate_text_length(
+                    content_type,
+                    "content_type",
+                    50,
+                )
+
+                posted_at = parse_csv_datetime(
+                    row.get("posted_at", "")
+                )
+
+                views = parse_non_negative_integer(
+                    row.get("views")
+                )
+
+                likes = parse_non_negative_integer(
+                    row.get("likes")
+                )
+
+                comments = parse_non_negative_integer(
+                    row.get("comments")
+                )
+
+                shares = parse_non_negative_integer(
+                    row.get("shares")
+                )
+
+                saves = parse_non_negative_integer(
+                    row.get("saves")
+                )
+
+                external_id = row.get(
+                    "external_id",
+                    "",
+                ).strip()
+
+                if not external_id:
+                    external_id = generate_csv_external_id(
+                        platform,
+                        caption,
+                        content_type,
+                        posted_at,
+                    )
+
+                external_url = row.get(
+                    "external_url",
+                    "",
+                ).strip() or None
+
+                duplicate = Post.query.filter_by(
+                    platform=platform,
+                    external_id=external_id,
+                ).first()
+
+                if duplicate:
+                    skipped_count += 1
+                    continue
+
+                post = Post(
+                    platform=platform,
+                    caption=caption,
+                    content_type=content_type,
+                    posted_at=posted_at,
+                    views=views,
+                    likes=likes,
+                    comments=comments,
+                    shares=shares,
+                    saves=saves,
+                    external_id=external_id,
+                    external_url=external_url,
+                    source="csv_import",
+                )
+
+                db.session.add(post)
+                imported_count += 1
+
+            except (ValueError, TypeError) as error:
+                row_errors.append(
+                    f"Row {row_number}: {error}"
+                )
+
+        db.session.commit()
+
+        return render_template(
+            "import_csv.html",
+            result={
+                "imported": imported_count,
+                "skipped": skipped_count,
+                "invalid": len(row_errors),
+                "errors": row_errors[:20],
+            },
+        )
+
+    except (UnicodeDecodeError, csv.Error, ValueError) as error:
+        db.session.rollback()
+
+        return render_template(
+            "import_csv.html",
+            error=str(error),
+        )
+
+    except Exception:
+        db.session.rollback()
+
+        app.logger.exception(
+            "Unexpected CSV import error."
+        )
+
+        return render_template(
+            "import_csv.html",
+            error=(
+                "The CSV could not be imported. "
+                "Check the file and try again."
+            ),
+        )
+
+
+# ---------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------
+
+@app.route("/export-csv")
+def export_csv():
+    try:
+        query = apply_post_filters(Post.query)
+    except ValueError:
+        return Response(
+            "Invalid date filter.",
+            status=400,
+            mimetype="text/plain",
+        )
+
+    posts = query.order_by(
+        Post.posted_at.desc()
+    ).all()
+
+    output = io.StringIO()
+
+    fieldnames = [
+        "platform",
+        "caption",
+        "content_type",
+        "posted_at",
+        "views",
+        "likes",
+        "comments",
+        "shares",
+        "saves",
+        "external_id",
+        "external_url",
+        "source",
+    ]
+
+    writer = csv.DictWriter(
+        output,
+        fieldnames=fieldnames,
+    )
+
+    writer.writeheader()
+
+    for post in posts:
+        writer.writerow(
+            {
+                "platform": post.platform,
+                "caption": post.caption,
+                "content_type": post.content_type,
+                "posted_at": post.posted_at.isoformat(
+                    sep=" ",
+                    timespec="minutes",
+                ),
+                "views": post.views,
+                "likes": post.likes,
+                "comments": post.comments,
+                "shares": post.shares,
+                "saves": post.saves,
+                "external_id": post.external_id or "",
+                "external_url": post.external_url or "",
+                "source": post.source,
+            }
+        )
+
+    filename = (
+        "social-media-analytics-"
+        f"{datetime.now().strftime('%Y-%m-%d')}.csv"
+    )
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        },
+    )
+
+
+# ---------------------------------------------------------
+# Sample CSV
+# ---------------------------------------------------------
+
+@app.route("/sample-csv")
+def sample_csv():
+    output = io.StringIO()
+
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "platform",
+            "caption",
+            "content_type",
+            "posted_at",
+            "views",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "external_id",
+            "external_url",
+        ]
+    )
+
+    writer.writerow(
+        [
+            "Instagram",
+            "Product launch",
+            "Carousel",
+            "2026-09-15 14:30",
+            "12000",
+            "850",
+            "63",
+            "42",
+            "130",
+            "instagram-example-101",
+            "https://instagram.com/p/example",
+        ]
+    )
+
+    writer.writerow(
+        [
+            "TikTok",
+            "Behind the scenes",
+            "Video",
+            "2026-09-17 18:00",
+            "43000",
+            "5100",
+            "280",
+            "430",
+            "0",
+            "tiktok-example-202",
+            "https://tiktok.com/@example/video/202",
+        ]
+    )
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="sample-posts.csv"'
+            )
+        },
+    )
 
 
 # ---------------------------------------------------------
@@ -699,7 +1219,6 @@ def import_youtube():
             )
 
         channel = channels[0]
-
         channel_id = channel["id"]
         channel_name = channel["snippet"]["title"]
         channel_handle_with_at = f"@{channel_handle}"
@@ -768,10 +1287,7 @@ def import_youtube():
         for video in video_response.get("items", []):
             video_id = video["id"]
             snippet = video.get("snippet", {})
-            statistics = video.get(
-                "statistics",
-                {},
-            )
+            statistics = video.get("statistics", {})
 
             published_at = datetime.fromisoformat(
                 snippet["publishedAt"].replace(
@@ -779,10 +1295,6 @@ def import_youtube():
                     "+00:00",
                 )
             ).replace(tzinfo=None)
-
-            thumbnail_url = get_thumbnail_url(
-                snippet.get("thumbnails", {})
-            )
 
             post = Post.query.filter_by(
                 platform="YouTube",
@@ -798,11 +1310,6 @@ def import_youtube():
                     ),
                     content_type="Video",
                     posted_at=published_at,
-                    views=0,
-                    likes=0,
-                    comments=0,
-                    shares=0,
-                    saves=0,
                     external_id=video_id,
                     source="youtube_api",
                     social_account=social_account,
@@ -815,35 +1322,29 @@ def import_youtube():
                 updated_count += 1
 
             post.platform = "YouTube"
-
             post.caption = snippet.get(
                 "title",
                 "Untitled YouTube video",
             )
-
             post.content_type = "Video"
             post.posted_at = published_at
-
             post.views = int(
                 statistics.get("viewCount", 0)
             )
-
             post.likes = int(
                 statistics.get("likeCount", 0)
             )
-
             post.comments = int(
                 statistics.get("commentCount", 0)
             )
-
             post.shares = 0
             post.saves = 0
-
             post.external_url = (
                 f"https://www.youtube.com/watch?v={video_id}"
             )
-
-            post.thumbnail_url = thumbnail_url
+            post.thumbnail_url = get_thumbnail_url(
+                snippet.get("thumbnails", {})
+            )
             post.source = "youtube_api"
             post.social_account = social_account
 
@@ -894,4 +1395,5 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
+
