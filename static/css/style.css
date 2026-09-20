@@ -554,3 +554,185 @@ select:focus {
 .delete-action {
   color: #b91c1c;
 }
+
+[hidden] {
+  display: none !important;
+}
+
+.filter-section {
+  margin-bottom: 28px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.filter-heading h2 {
+  margin: 0 0 4px;
+}
+
+.filter-heading p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.search-filter {
+  grid-column: span 2;
+}
+
+.filter-error {
+  margin: 16px 0 0;
+  color: #b91c1c;
+  font-weight: 650;
+}
+
+@media (max-width: 900px) {
+  .filter-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .search-filter {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 650px) {
+  .filter-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .search-filter {
+    grid-column: auto;
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.recommendation-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 22px;
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      #eef2ff,
+      #f5f3ff
+    );
+}
+
+.recommendation-label {
+  margin: 0 0 6px;
+  color: #4338ca;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.recommendation-card h3 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.recommendation-description {
+  margin: 0;
+  color: var(--muted);
+}
+
+.recommendation-rate {
+  min-width: 150px;
+  text-align: right;
+}
+
+.recommendation-rate span {
+  display: block;
+  color: #4338ca;
+  font-size: 30px;
+  font-weight: 750;
+}
+
+.recommendation-rate small {
+  color: var(--muted);
+}
+
+@media (max-width: 650px) {
+  .recommendation-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .recommendation-rate {
+    text-align: left;
+  }
+}
+.badge-csv {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.csv-information {
+  padding: 18px;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.csv-information h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.csv-information p {
+  margin: 5px 0;
+  color: var(--muted);
+}
+
+.csv-information a {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--primary);
+  font-weight: 650;
+}
+
+.csv-errors {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.csv-errors h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.csv-errors ul {
+  margin: 0;
+  padding-left: 20px;
+}

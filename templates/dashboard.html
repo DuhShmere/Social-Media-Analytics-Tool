@@ -8,12 +8,102 @@ Tool {% endblock %} {% block content %}
   </div>
 
   <div class="heading-actions">
+    <a
+      id="export-csv"
+      class="button button-secondary"
+      href="{{ url_for('export_csv') }}"
+    >
+      Export CSV
+    </a>
+
+    <a class="button button-secondary" href="{{ url_for('import_csv') }}">
+      Import CSV
+    </a>
+
     <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
       Import YouTube
     </a>
 
     <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
   </div>
+</section>
+
+<section class="filter-section">
+  <div class="filter-heading">
+    <div>
+      <h2>Filter Content</h2>
+
+      <p id="filter-results">Showing all {{ posts | length }} posts</p>
+    </div>
+
+    <button id="reset-filters" class="button button-secondary" type="button">
+      Reset Filters
+    </button>
+  </div>
+
+  <div class="filter-grid">
+    <div class="form-group search-filter">
+      <label for="post-search"> Search posts </label>
+
+      <input
+        id="post-search"
+        type="search"
+        placeholder="Search titles or captions"
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="account-select"> Account </label>
+
+      <select id="account-select">
+        <option value="">All accounts</option>
+
+        {% for account in social_accounts %}
+        <option value="{{ account.id }}">
+          {{ account.platform }} — {{ account.account_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="platform-select"> Platform </label>
+
+      <select id="platform-select">
+        <option value="">All platforms</option>
+
+        {% for platform in platforms %}
+        <option value="{{ platform }}">{{ platform }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="content-type-select"> Content type </label>
+
+      <select id="content-type-select">
+        <option value="">All content types</option>
+
+        {% for content_type in content_types %}
+        <option value="{{ content_type }}">{{ content_type }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="start-date"> Start date </label>
+
+      <input id="start-date" type="date" />
+    </div>
+
+    <div class="form-group">
+      <label for="end-date"> End date </label>
+
+      <input id="end-date" type="date" />
+    </div>
+  </div>
+
+  <p id="filter-error" class="filter-error" role="alert" hidden></p>
 </section>
 
 <section class="summary-grid">
@@ -50,40 +140,46 @@ Tool {% endblock %} {% block content %}
   id="analytics-dashboard"
   class="analytics-section"
   data-api-url="{{ url_for('analytics_api') }}"
+  data-export-url="{{ url_for('export_csv') }}"
 >
   <div class="analytics-heading">
     <div>
       <h2>Performance Analytics</h2>
 
-      <p>Explore views and engagement across your content.</p>
-    </div>
-
-    <div class="account-filter">
-      <label for="account-select"> Account </label>
-
-      <select id="account-select">
-        <option value="">All posts and accounts</option>
-
-        {% for account in social_accounts %}
-        <option value="{{ account.id }}">
-          {{ account.platform }} — {{ account.account_name }}
-        </option>
-        {% endfor %}
-      </select>
+      <p>Charts and recommendations update with your filters.</p>
     </div>
   </div>
+
+  <article id="best-time-card" class="recommendation-card">
+    <div>
+      <p class="recommendation-label">Recommended Posting Window</p>
+
+      <h3 id="best-time-heading">Analyzing posting history…</h3>
+
+      <p id="best-time-description" class="recommendation-description">
+        A recommendation requires at least three posts in the same weekday and
+        time window.
+      </p>
+    </div>
+
+    <div id="best-time-rate" class="recommendation-rate" hidden>
+      <span id="best-time-rate-value"> 0% </span>
+
+      <small>average engagement</small>
+    </div>
+  </article>
 
   <p id="analytics-status" class="analytics-status" aria-live="polite">
     Loading analytics…
   </p>
 
   <div id="analytics-empty" class="analytics-empty" hidden>
-    No posts are available for this account.
+    No posts match the selected filters.
   </div>
 
   <div id="chart-grid" class="chart-grid" hidden>
     <article class="chart-panel chart-panel-wide">
-      <h3>Top Videos by Views</h3>
+      <h3>Top Posts by Views</h3>
 
       <div class="chart-container chart-container-large">
         <canvas
@@ -124,7 +220,7 @@ Tool {% endblock %} {% block content %}
   <div class="section-heading">
     <div>
       <h2>Recent Posts</h2>
-      <p>Manual and API-imported content</p>
+      <p>Manual, CSV, and API-imported content</p>
     </div>
   </div>
 
@@ -145,9 +241,20 @@ Tool {% endblock %} {% block content %}
         </tr>
       </thead>
 
-      <tbody>
+      <tbody id="posts-table-body">
         {% for post in posts %}
-        <tr>
+        <tr
+          class="post-row"
+          data-caption="{{ post.caption | lower }}"
+          data-platform="{{ post.platform }}"
+          data-content-type="{{ post.content_type }}"
+          data-date="{{ post.posted_at.strftime(
+                  '%Y-%m-%d'
+                ) }}"
+          data-account-id="{{
+                  post.social_account_id or ''
+                }}"
+        >
           <td>
             <div class="post-cell">
               {% if post.thumbnail_url %}
@@ -187,6 +294,10 @@ Tool {% endblock %} {% block content %}
           <td>
             {% if post.source == "youtube_api" %}
             <span class="badge badge-api"> YouTube API </span>
+
+            {% elif post.source == "csv_import" %}
+            <span class="badge badge-csv"> CSV </span>
+
             {% else %}
             <span class="badge"> Manual </span>
             {% endif %}
@@ -196,14 +307,14 @@ Tool {% endblock %} {% block content %}
 
           <td>{{ "{:,}".format(post.views) }}</td>
 
-          <td>{{ "{:,}".format(post.total_interactions) }}</td>
+          <td>{{ "{:,}".format( post.total_interactions ) }}</td>
 
           <td>
             <strong> {{ post.engagement_rate }}% </strong>
           </td>
 
           <td>
-            {% if post.source == "manual" %}
+            {% if post.is_editable %}
             <div class="post-actions">
               <a
                 class="table-action"
@@ -248,14 +359,22 @@ Tool {% endblock %} {% block content %}
     </table>
   </div>
 
+  <div id="no-matching-posts" class="analytics-empty" hidden>
+    No posts match the selected filters.
+  </div>
+
   {% else %}
   <div class="empty-state">
     <h2>No posts yet</h2>
 
-    <p>Add a post manually or import videos from YouTube.</p>
+    <p>Add a post manually, import a CSV, or connect a YouTube channel.</p>
 
     <div class="empty-actions">
       <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
+
+      <a class="button button-secondary" href="{{ url_for('import_csv') }}">
+        Import CSV
+      </a>
 
       <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
         Import YouTube
