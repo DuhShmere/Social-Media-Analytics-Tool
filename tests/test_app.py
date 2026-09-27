@@ -1,7 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 
-from app import Post, db
+from app import MetricSnapshot, Post, db, record_metric_snapshot
 
 
 def create_post(
@@ -244,3 +244,119 @@ def test_export_csv(client, app):
 
     content_disposition = response.headers.get("Content-Disposition", "")
     assert "attachment" in content_disposition
+
+
+def test_manual_post_creates_metric_snapshot(client, app):
+    response = client.post(
+        "/add-post",
+        data={
+            "platform": "Instagram",
+            "caption": "Snapshot test",
+            "content_type": "Reel",
+            "posted_at": "2026-09-20T10:00",
+            "views": "500",
+            "likes": "50",
+            "comments": "10",
+            "shares": "5",
+            "saves": "20",
+        },
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        post = Post.query.filter_by(caption="Snapshot test").one()
+        snapshot = MetricSnapshot.query.filter_by(post_id=post.id).one()
+
+        assert snapshot.views == 500
+        assert snapshot.total_interactions == 85
+        assert snapshot.engagement_rate == 17.0
+
+
+def test_editing_post_creates_second_snapshot(client, app):
+    with app.app_context():
+        post = create_post()
+        record_metric_snapshot(post)
+        db.session.commit()
+        post_id = post.id
+
+    response = client.post(
+        f"/posts/{post_id}/edit",
+        data={
+            "platform": "YouTube",
+            "caption": "Updated video",
+            "content_type": "Video",
+            "posted_at": "2026-09-15T14:30",
+            "views": "1500",
+            "likes": "150",
+            "comments": "30",
+            "shares": "20",
+            "saves": "10",
+        },
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        snapshots = MetricSnapshot.query.filter_by(
+            post_id=post_id
+        ).order_by(MetricSnapshot.id).all()
+
+        assert len(snapshots) == 2
+        assert snapshots[0].views == 1000
+        assert snapshots[1].views == 1500
+
+
+def test_post_detail_page_loads(client, app):
+    with app.app_context():
+        post = create_post()
+        record_metric_snapshot(post)
+        db.session.commit()
+        post_id = post.id
+
+    response = client.get(f"/posts/{post_id}")
+
+    assert response.status_code == 200
+    assert b"Performance History" in response.data
+    assert b"Test video" in response.data
+
+
+def test_post_history_api_returns_snapshots(client, app):
+    with app.app_context():
+        post = create_post()
+        record_metric_snapshot(post)
+
+        post.views = 1500
+        post.likes = 150
+        record_metric_snapshot(post)
+
+        db.session.commit()
+        post_id = post.id
+
+    response = client.get(f"/api/posts/{post_id}/history")
+
+    assert response.status_code == 200
+    assert response.is_json
+
+    data = response.get_json()
+
+    assert data["post"]["caption"] == "Test video"
+    assert len(data["snapshots"]) == 2
+    assert data["snapshots"][0]["views"] == 1000
+    assert data["snapshots"][1]["views"] == 1500
+
+
+def test_deleting_post_deletes_snapshots(client, app):
+    with app.app_context():
+        post = create_post()
+        record_metric_snapshot(post)
+        db.session.commit()
+        post_id = post.id
+
+    response = client.post(f"/posts/{post_id}/delete")
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        assert db.session.get(Post, post_id) is None
+        assert MetricSnapshot.query.filter_by(post_id=post_id).count() == 0

@@ -28,6 +28,8 @@
           <a href="{{ url_for('add_post') }}"> Add Post </a>
 
           <a href="{{ url_for('import_youtube') }}"> Import YouTube </a>
+
+          <a href="{{ url_for('import_csv') }}"> Import CSV </a>
         </div>
       </nav>
     </header>
@@ -35,4 +37,3 @@
     <main class="page-container">{% block content %}{% endblock %}</main>
   </body>
 </html>
-<a href="{{ url_for('import_csv') }}"> Import CSV </a>

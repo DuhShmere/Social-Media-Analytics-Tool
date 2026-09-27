@@ -314,8 +314,18 @@ Tool {% endblock %} {% block content %}
           </td>
 
           <td>
-            {% if post.is_editable %}
             <div class="post-actions">
+              <a
+                class="table-action"
+                href="{{ url_for(
+                          'post_detail',
+                          post_id=post.id
+                        ) }}"
+              >
+                Analytics
+              </a>
+
+              {% if post.is_editable %}
               <a
                 class="table-action"
                 href="{{ url_for(
@@ -339,19 +349,17 @@ Tool {% endblock %} {% block content %}
                   Delete
                 </button>
               </form>
+              {% elif post.external_url %}
+              <a
+                class="table-action"
+                href="{{ post.external_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View
+              </a>
+              {% endif %}
             </div>
-
-            {% elif post.external_url %}
-            <a
-              class="table-action"
-              href="{{ post.external_url }}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View
-            </a>
-
-            {% else %} — {% endif %}
           </td>
         </tr>
         {% endfor %}

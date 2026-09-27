@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.caption }} | Social Media Analytics Tool{% endblock %}
+
+{% block content %}
+<section class="page-heading post-detail-heading">
+  <div>
+    <a class="back-link" href="{{ url_for('dashboard') }}">
+      ← Back to dashboard
+    </a>
+
+    <p class="eyebrow">
+      {{ post.platform }} · {{ post.content_type }}
+    </p>
+
+    <h1>{{ post.caption }}</h1>
+
+    <p>
+      Published {{ post.posted_at.strftime("%b %d, %Y at %I:%M %p") }}
+      {% if post.social_account %}
+      · {{ post.social_account.account_name }}
+      {% endif %}
+    </p>
+  </div>
+
+  {% if post.external_url %}
+  <a
+    class="button button-secondary"
+    href="{{ post.external_url }}"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    View original post
+  </a>
+  {% endif %}
+</section>
+
+<section class="summary-grid">
+  <article class="summary-card">
+    <p class="card-label">Current Views</p>
+    <p class="card-value">{{ "{:,}".format(post.views) }}</p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Current Interactions</p>
+    <p class="card-value">
+      {{ "{:,}".format(post.total_interactions) }}
+    </p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Engagement Rate</p>
+    <p class="card-value">{{ post.engagement_rate }}%</p>
+  </article>
+
+  <article class="summary-card">
+    <p class="card-label">Snapshots</p>
+    <p class="card-value">{{ snapshots | length }}</p>
+  </article>
+</section>
+
+<section class="growth-section">
+  <div class="section-heading">
+    <div>
+      <h2>Growth Since Previous Snapshot</h2>
+      <p>
+        {% if previous_snapshot and latest_snapshot %}
+        Comparing {{ previous_snapshot.captured_at.strftime("%b %d, %Y %I:%M %p") }}
+        with {{ latest_snapshot.captured_at.strftime("%b %d, %Y %I:%M %p") }}.
+        {% else %}
+        Synchronize or update this post again to calculate growth.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  {% if changes %}
+  <div class="growth-grid">
+    {% for label, change in [
+      ("Views", changes.views),
+      ("Interactions", changes.interactions),
+      ("Engagement points", changes.engagement)
+    ] %}
+    <article class="growth-card">
+      <p class="card-label">{{ label }}</p>
+
+      <p class="growth-value {% if change.difference < 0 %}negative{% endif %}">
+        {% if change.difference > 0 %}+{% endif %}{{ change.difference }}
+      </p>
+
+      <p class="growth-percentage">
+        {% if change.percentage is none %}
+        New activity
+        {% else %}
+        {% if change.percentage > 0 %}+{% endif %}{{ change.percentage }}%
+        {% endif %}
+      </p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="analytics-empty compact-empty">
+    At least two snapshots are needed to calculate growth.
+  </div>
+  {% endif %}
+</section>
+
+<section
+  id="post-history"
+  class="analytics-section"
+  data-api-url="{{ url_for('post_history_api', post_id=post.id) }}"
+>
+  <div class="analytics-heading">
+    <div>
+      <h2>Performance History</h2>
+      <p>Metrics captured whenever this post is imported, edited, or synchronized.</p>
+    </div>
+  </div>
+
+  <p id="history-status" class="analytics-status" aria-live="polite">
+    Loading performance history…
+  </p>
+
+  <div id="history-empty" class="analytics-empty" hidden>
+    A second snapshot is needed before a growth trend can be displayed.
+  </div>
+
+  <div id="history-chart-grid" class="chart-grid" hidden>
+    <article class="chart-panel chart-panel-wide">
+      <h3>Views Over Time</h3>
+
+      <div class="chart-container">
+        <canvas
+          id="history-views-chart"
+          role="img"
+          aria-label="Line chart showing post views over time"
+        ></canvas>
+      </div>
+    </article>
+
+    <article class="chart-panel">
+      <h3>Interactions Over Time</h3>
+
+      <div class="chart-container">
+        <canvas
+          id="history-interactions-chart"
+          role="img"
+          aria-label="Line chart showing post interactions over time"
+        ></canvas>
+      </div>
+    </article>
+
+    <article class="chart-panel">
+      <h3>Engagement Rate Over Time</h3>
+
+      <div class="chart-container">
+        <canvas
+          id="history-engagement-chart"
+          role="img"
+          aria-label="Line chart showing post engagement rate over time"
+        ></canvas>
+      </div>
+    </article>
+  </div>
+</section>
+
+{% if snapshots %}
+<section class="posts-section">
+  <div class="section-heading">
+    <div>
+      <h2>Snapshot History</h2>
+      <p>Most recent measurements appear first.</p>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Captured</th>
+          <th>Views</th>
+          <th>Likes</th>
+          <th>Comments</th>
+          <th>Shares</th>
+          <th>Saves</th>
+          <th>Engagement</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for snapshot in snapshots | reverse %}
+        <tr>
+          <td>{{ snapshot.captured_at.strftime("%b %d, %Y %I:%M %p") }}</td>
+          <td>{{ "{:,}".format(snapshot.views) }}</td>
+          <td>{{ "{:,}".format(snapshot.likes) }}</td>
+          <td>{{ "{:,}".format(snapshot.comments) }}</td>
+          <td>{{ "{:,}".format(snapshot.shares) }}</td>
+          <td>{{ "{:,}".format(snapshot.saves) }}</td>
+          <td><strong>{{ snapshot.engagement_rate }}%</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/post_detail.js') }}"></script>
+{% endblock %}

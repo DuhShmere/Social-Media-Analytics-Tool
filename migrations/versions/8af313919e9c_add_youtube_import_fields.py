@@ -1,7 +1,7 @@
 """Add YouTube import fields
 
 Revision ID: 8af313919e9c
-Revises:
+Revises: 1a2b3c4d5e6f
 Create Date: 2026-09-11
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # Revision identifiers used by Alembic.
 revision: str = "8af313919e9c"
-down_revision: Union[str, Sequence[str], None] = None
+down_revision: Union[str, Sequence[str], None] = "1a2b3c4d5e6f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

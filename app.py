@@ -128,6 +128,13 @@ class Post(db.Model):
         back_populates="posts",
     )
 
+    metric_snapshots = db.relationship(
+        "MetricSnapshot",
+        back_populates="post",
+        cascade="all, delete-orphan",
+        order_by="MetricSnapshot.captured_at",
+    )
+
     @property
     def total_interactions(self):
         return (
@@ -155,9 +162,96 @@ class Post(db.Model):
         }
 
 
+class MetricSnapshot(db.Model):
+    __tablename__ = "metric_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "post.id",
+            name="fk_metric_snapshot_post_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        index=True,
+    )
+    captured_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ),
+    )
+    views = db.Column(db.Integer, nullable=False, default=0)
+    likes = db.Column(db.Integer, nullable=False, default=0)
+    comments = db.Column(db.Integer, nullable=False, default=0)
+    shares = db.Column(db.Integer, nullable=False, default=0)
+    saves = db.Column(db.Integer, nullable=False, default=0)
+
+    post = db.relationship(
+        "Post",
+        back_populates="metric_snapshots",
+    )
+
+    @property
+    def total_interactions(self):
+        return (
+            (self.likes or 0)
+            + (self.comments or 0)
+            + (self.shares or 0)
+            + (self.saves or 0)
+        )
+
+    @property
+    def engagement_rate(self):
+        if not self.views:
+            return 0
+
+        return round(
+            (self.total_interactions / self.views) * 100,
+            2,
+        )
+
+
 # ---------------------------------------------------------
 # General helper functions
 # ---------------------------------------------------------
+
+def record_metric_snapshot(post, captured_at=None):
+    snapshot = MetricSnapshot(
+        captured_at=(
+            captured_at
+            or datetime.now(timezone.utc).replace(tzinfo=None)
+        ),
+        views=post.views or 0,
+        likes=post.likes or 0,
+        comments=post.comments or 0,
+        shares=post.shares or 0,
+        saves=post.saves or 0,
+    )
+
+    post.metric_snapshots.append(snapshot)
+    return snapshot
+
+
+def calculate_metric_change(current_value, previous_value):
+    current_value = current_value or 0
+    previous_value = previous_value or 0
+    difference = round(current_value - previous_value, 2)
+
+    if previous_value == 0:
+        percentage = 0 if difference == 0 else None
+    else:
+        percentage = round(
+            (difference / previous_value) * 100,
+            2,
+        )
+
+    return {
+        "difference": difference,
+        "percentage": percentage,
+    }
 
 def parse_non_negative_integer(value):
     if value is None or str(value).strip() == "":
@@ -606,6 +700,98 @@ def analytics_api():
 
 
 # ---------------------------------------------------------
+# Post performance history
+# ---------------------------------------------------------
+
+@app.route("/posts/<int:post_id>")
+def post_detail(post_id):
+    post = db.get_or_404(Post, post_id)
+
+    snapshots = MetricSnapshot.query.filter_by(
+        post_id=post.id
+    ).order_by(
+        MetricSnapshot.captured_at.asc(),
+        MetricSnapshot.id.asc(),
+    ).all()
+
+    latest_snapshot = snapshots[-1] if snapshots else None
+    previous_snapshot = (
+        snapshots[-2]
+        if len(snapshots) >= 2
+        else None
+    )
+
+    changes = None
+
+    if latest_snapshot and previous_snapshot:
+        changes = {
+            "views": calculate_metric_change(
+                latest_snapshot.views,
+                previous_snapshot.views,
+            ),
+            "interactions": calculate_metric_change(
+                latest_snapshot.total_interactions,
+                previous_snapshot.total_interactions,
+            ),
+            "engagement": calculate_metric_change(
+                latest_snapshot.engagement_rate,
+                previous_snapshot.engagement_rate,
+            ),
+        }
+
+    return render_template(
+        "post_detail.html",
+        post=post,
+        snapshots=snapshots,
+        latest_snapshot=latest_snapshot,
+        previous_snapshot=previous_snapshot,
+        changes=changes,
+    )
+
+
+@app.get("/api/posts/<int:post_id>/history")
+def post_history_api(post_id):
+    post = db.get_or_404(Post, post_id)
+
+    snapshots = MetricSnapshot.query.filter_by(
+        post_id=post.id
+    ).order_by(
+        MetricSnapshot.captured_at.asc(),
+        MetricSnapshot.id.asc(),
+    ).all()
+
+    return jsonify(
+        {
+            "post": {
+                "id": post.id,
+                "caption": post.caption,
+                "platform": post.platform,
+            },
+            "snapshots": [
+                {
+                    "captured_at": snapshot.captured_at.isoformat(),
+                    "label": snapshot.captured_at.strftime(
+                        "%b %d, %Y %I:%M %p"
+                    ),
+                    "views": snapshot.views,
+                    "likes": snapshot.likes,
+                    "comments": snapshot.comments,
+                    "shares": snapshot.shares,
+                    "saves": snapshot.saves,
+                    "total_interactions": (
+                        snapshot.total_interactions
+                    ),
+                    "engagement_rate": (
+                        snapshot.engagement_rate
+                    ),
+                }
+                for snapshot in snapshots
+            ],
+        }
+    )
+
+
+# ---------------------------------------------------------
 # Connected accounts
 # ---------------------------------------------------------
 
@@ -672,6 +858,7 @@ def add_post():
             )
 
             db.session.add(post)
+            record_metric_snapshot(post)
             db.session.commit()
 
             return redirect(url_for("dashboard"))
@@ -743,6 +930,8 @@ def edit_post(post_id):
             post.saves = parse_non_negative_integer(
                 request.form.get("saves")
             )
+
+            record_metric_snapshot(post)
 
             db.session.commit()
 
@@ -970,6 +1159,7 @@ def import_csv():
                 )
 
                 db.session.add(post)
+                record_metric_snapshot(post)
                 imported_count += 1
 
             except (ValueError, TypeError) as error:
@@ -1244,9 +1434,11 @@ def import_youtube():
                 channel_handle_with_at
             )
 
-        social_account.last_synced_at = datetime.now(
+        sync_time = datetime.now(
             timezone.utc
         ).replace(tzinfo=None)
+
+        social_account.last_synced_at = sync_time
 
         db.session.flush()
 
@@ -1348,6 +1540,11 @@ def import_youtube():
             post.source = "youtube_api"
             post.social_account = social_account
 
+            record_metric_snapshot(
+                post,
+                captured_at=sync_time,
+            )
+
         db.session.commit()
 
         return render_template(
@@ -1392,8 +1589,4 @@ def import_youtube():
 # ---------------------------------------------------------
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-
     app.run(debug=True, port=5001)
-
