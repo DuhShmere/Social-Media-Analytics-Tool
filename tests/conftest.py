@@ -1,31 +1,22 @@
-import os
-
 import pytest
 
-
-# This must be set before importing app.py.
-# It prevents tests from accessing the real tracker.db database.
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-
-from app import app as flask_app
+from app_factory import create_app
 from extensions import db
 
 
 @pytest.fixture()
 def app():
-    flask_app.config.update(
-        TESTING=True,
-        # Tests that need a key set one explicitly, so the real key
-        # from .env can never be used.
-        YOUTUBE_API_KEY=None,
-    )
+    # Each test gets a new app with its own in-memory database.
+    # TestingConfig ignores DATABASE_URL and .env, so tests can never
+    # reach the real tracker.db or the real YouTube API key.
+    app = create_app("testing")
 
-    with flask_app.app_context():
+    with app.app_context():
         db.create_all()
 
-    yield flask_app
+    yield app
 
-    with flask_app.app_context():
+    with app.app_context():
         db.session.remove()
         db.drop_all()
 
