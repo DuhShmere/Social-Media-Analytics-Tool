@@ -775,3 +775,127 @@ def test_youtube_post_cannot_be_edited_or_deleted(client, app):
         assert post is not None
         assert post.caption == "Synced video"
         assert post.views == 1000
+
+
+# ---------------------------------------------------------
+# Form validation and error pages
+# ---------------------------------------------------------
+
+def valid_post_form(**overrides):
+    form = {
+        "platform": "Instagram",
+        "caption": "Validation test",
+        "content_type": "Reel",
+        "posted_at": "2026-09-15T14:30",
+        "views": "1000",
+        "likes": "100",
+        "comments": "10",
+        "shares": "5",
+        "saves": "5",
+    }
+    form.update(overrides)
+    return form
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_message"),
+    [
+        ({"likes": "-1"}, b"Likes must be a whole number of 0 or more."),
+        ({"views": "abc"}, b"Views must be a whole number of 0 or more."),
+        ({"shares": "2.5"}, b"Shares must be a whole number of 0 or more."),
+        ({"caption": "x" * 301}, b"Caption cannot exceed 300 characters."),
+        ({"platform": "  "}, b"Platform, caption, and content type are required."),
+        ({"posted_at": "not-a-date"}, b"Enter a valid date and time"),
+    ],
+    ids=[
+        "negative-metric",
+        "non-numeric-metric",
+        "decimal-metric",
+        "caption-too-long",
+        "blank-platform",
+        "invalid-date",
+    ],
+)
+def test_add_post_rejects_invalid_input(
+    client,
+    app,
+    overrides,
+    expected_message,
+):
+    response = client.post(
+        "/add-post",
+        data=valid_post_form(**overrides),
+    )
+
+    assert response.status_code == 200
+    assert expected_message in response.data
+
+    with app.app_context():
+        assert Post.query.count() == 0
+        assert MetricSnapshot.query.count() == 0
+
+
+def test_invalid_edit_leaves_post_unchanged(client, app):
+    with app.app_context():
+        post = create_post(caption="Original caption")
+        post_id = post.id
+
+    response = client.post(
+        f"/posts/{post_id}/edit",
+        data=valid_post_form(caption="Changed caption", views="-5"),
+    )
+
+    assert response.status_code == 200
+    assert b"Views must be a whole number of 0 or more." in response.data
+
+    with app.app_context():
+        post = db.session.get(Post, post_id)
+        assert post.caption == "Original caption"
+        assert post.views == 1000
+        assert MetricSnapshot.query.filter_by(post_id=post_id).count() == 0
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/posts/9999", "/posts/9999/edit", "/does-not-exist"],
+)
+def test_missing_page_returns_404_page(client, path):
+    response = client.get(path)
+
+    assert response.status_code == 404
+    assert b"Page not found" in response.data
+    assert b"Back to Dashboard" in response.data
+
+
+def test_missing_post_api_returns_json_404(client):
+    response = client.get("/api/posts/9999/history")
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "Not found."}
+
+
+def test_unexpected_error_returns_500_page(client, app, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("Simulated failure")
+
+    # TESTING mode re-raises errors; disable that to see the 500 page.
+    monkeypatch.setitem(app.config, "PROPAGATE_EXCEPTIONS", False)
+    monkeypatch.setattr(app_module, "calculate_best_posting_time", broken)
+    monkeypatch.setattr(app_module, "calculate_metric_change", broken)
+
+    with app.app_context():
+        post = create_post()
+        record_metric_snapshot(post)
+        record_metric_snapshot(post)
+        db.session.commit()
+        post_id = post.id
+
+    page_response = client.get(f"/posts/{post_id}")
+    api_response = client.get("/api/analytics")
+
+    assert page_response.status_code == 500
+    assert b"Something went wrong" in page_response.data
+    assert b"Simulated failure" not in page_response.data
+
+    assert api_response.status_code == 500
+    assert api_response.get_json() == {"error": "Internal server error."}

@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block title %} Page Not Found | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<section class="empty-state">
+  <h1>Page not found</h1>
+
+  <p>
+    The page or post you were looking for does not exist. It may have been
+    deleted.
+  </p>
+
+  <div class="empty-actions">
+    <a class="button" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block title %} Something Went Wrong | Social
+Media Analytics Tool {% endblock %} {% block content %}
+<section class="empty-state">
+  <h1>Something went wrong</h1>
+
+  <p>
+    An unexpected error occurred and no changes were saved. Please try again.
+    If the problem continues, check the terminal running the app for details.
+  </p>
+
+  <div class="empty-actions">
+    <a class="button" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+{% endblock %}

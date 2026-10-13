@@ -323,6 +323,59 @@ def validate_text_length(value, field_name, limit):
         )
 
 
+METRIC_FIELDS = ("views", "likes", "comments", "shares", "saves")
+
+
+def parse_post_form(form):
+    """Validate the add/edit post form and return model field values.
+
+    Raises ValueError with a message that is safe to show the user.
+    """
+    platform = form.get("platform", "").strip()
+    caption = form.get("caption", "").strip()
+    content_type = form.get("content_type", "").strip()
+
+    if not platform or not caption or not content_type:
+        raise ValueError(
+            "Platform, caption, and content type are required."
+        )
+
+    validate_text_length(platform, "Platform", 50)
+    validate_text_length(caption, "Caption", 300)
+    validate_text_length(content_type, "Content type", 50)
+
+    try:
+        posted_at = datetime.strptime(
+            form.get("posted_at", ""),
+            "%Y-%m-%dT%H:%M",
+        )
+    except ValueError:
+        raise ValueError(
+            "Enter a valid date and time for when the post "
+            "was published."
+        ) from None
+
+    values = {
+        "platform": platform,
+        "caption": caption,
+        "content_type": content_type,
+        "posted_at": posted_at,
+    }
+
+    for field in METRIC_FIELDS:
+        try:
+            values[field] = parse_non_negative_integer(
+                form.get(field)
+            )
+        except ValueError:
+            raise ValueError(
+                f"{field.capitalize()} must be a whole number "
+                "of 0 or more."
+            ) from None
+
+    return values
+
+
 def is_safe_external_url(value):
     if not value:
         return False
@@ -859,42 +912,8 @@ def add_post():
 
     if request.method == "POST":
         try:
-            platform = request.form["platform"].strip()
-            caption = request.form["caption"].strip()
-            content_type = request.form[
-                "content_type"
-            ].strip()
-
-            posted_at = datetime.strptime(
-                request.form["posted_at"],
-                "%Y-%m-%dT%H:%M",
-            )
-
-            if not platform or not caption or not content_type:
-                raise ValueError(
-                    "Required fields are missing."
-                )
-
             post = Post(
-                platform=platform,
-                caption=caption,
-                content_type=content_type,
-                posted_at=posted_at,
-                views=parse_non_negative_integer(
-                    request.form.get("views")
-                ),
-                likes=parse_non_negative_integer(
-                    request.form.get("likes")
-                ),
-                comments=parse_non_negative_integer(
-                    request.form.get("comments")
-                ),
-                shares=parse_non_negative_integer(
-                    request.form.get("shares")
-                ),
-                saves=parse_non_negative_integer(
-                    request.form.get("saves")
-                ),
+                **parse_post_form(request.form),
                 source="manual",
             )
 
@@ -904,13 +923,9 @@ def add_post():
 
             return redirect(url_for("dashboard"))
 
-        except (ValueError, KeyError):
+        except ValueError as validation_error:
             db.session.rollback()
-
-            error = (
-                "Please complete every required field and use "
-                "non-negative numbers for all metrics."
-            )
+            error = str(validation_error)
 
     return render_template(
         "add_post.html",
@@ -936,41 +951,12 @@ def edit_post(post_id):
 
     if request.method == "POST":
         try:
-            platform = request.form["platform"].strip()
-            caption = request.form["caption"].strip()
-            content_type = request.form[
-                "content_type"
-            ].strip()
+            # Validate everything before changing the post so a
+            # bad submission never leaves it half-updated.
+            values = parse_post_form(request.form)
 
-            posted_at = datetime.strptime(
-                request.form["posted_at"],
-                "%Y-%m-%dT%H:%M",
-            )
-
-            if not platform or not caption or not content_type:
-                raise ValueError(
-                    "Required fields are missing."
-                )
-
-            post.platform = platform
-            post.caption = caption
-            post.content_type = content_type
-            post.posted_at = posted_at
-            post.views = parse_non_negative_integer(
-                request.form.get("views")
-            )
-            post.likes = parse_non_negative_integer(
-                request.form.get("likes")
-            )
-            post.comments = parse_non_negative_integer(
-                request.form.get("comments")
-            )
-            post.shares = parse_non_negative_integer(
-                request.form.get("shares")
-            )
-            post.saves = parse_non_negative_integer(
-                request.form.get("saves")
-            )
+            for field, value in values.items():
+                setattr(post, field, value)
 
             record_metric_snapshot(post)
 
@@ -978,13 +964,9 @@ def edit_post(post_id):
 
             return redirect(url_for("dashboard"))
 
-        except (ValueError, KeyError):
+        except ValueError as validation_error:
             db.session.rollback()
-
-            error = (
-                "Please complete every required field and use "
-                "non-negative numbers for all metrics."
-            )
+            error = str(validation_error)
 
     return render_template(
         "edit_post.html",
@@ -1622,6 +1604,34 @@ def import_youtube():
                 "the channel. Check the terminal for details."
             ),
         )
+
+
+# ---------------------------------------------------------
+# Error pages
+# ---------------------------------------------------------
+
+def wants_json_response():
+    return request.path.startswith("/api/")
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    if wants_json_response():
+        return jsonify({"error": "Not found."}), 404
+
+    return render_template("errors/404.html"), 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    # Flask has already logged the exception. Roll back so a failed
+    # transaction is never left open on the session.
+    db.session.rollback()
+
+    if wants_json_response():
+        return jsonify({"error": "Internal server error."}), 500
+
+    return render_template("errors/500.html"), 500
 
 
 # ---------------------------------------------------------
