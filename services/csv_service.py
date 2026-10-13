@@ -11,6 +11,8 @@ import io
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from sqlalchemy import func
+
 from models import Post, record_metric_snapshot
 from validators import (
     METRIC_FIELDS,
@@ -33,6 +35,11 @@ OPTIONAL_COLUMNS = ("external_id", "external_url")
 EXPORT_COLUMNS = (*REQUIRED_COLUMNS, *OPTIONAL_COLUMNS, "source")
 
 MAX_REPORTED_ERRORS = 20
+
+# Spreadsheet apps run a cell that starts with one of these as a
+# formula. Exported text cells that start with one get a leading
+# apostrophe so they open as plain text (OWASP CSV injection).
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 SAMPLE_ROWS = (
     (
@@ -125,8 +132,23 @@ def generate_csv_external_id(
     return f"csv-{digest[:32]}"
 
 
+def escape_formula(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return f"'{value}"
+
+    return value
+
+
+def unescape_formula(value):
+    """Undo escape_formula() so an export can be re-imported unchanged."""
+    if value.startswith("'") and value[1:].startswith(FORMULA_PREFIXES):
+        return value[1:]
+
+    return value
+
+
 def normalize_row(row):
-    """Strip header names and values.
+    """Strip header names and values, and undo formula escaping.
 
     csv.DictReader uses None for missing values in short rows and a
     None key for extra values in long rows. Both become safe here.
@@ -137,9 +159,24 @@ def normalize_row(row):
         if key is None:
             continue
 
-        normalized[key.strip()] = (value or "").strip()
+        normalized[key.strip()] = unescape_formula((value or "").strip())
 
     return normalized
+
+
+def find_matching_post(values):
+    """Find a post with the same content, whatever its source.
+
+    Manual posts have no external_id, so exporting and re-importing
+    them can only be matched on what the post is: the same fields
+    generate_csv_external_id() uses.
+    """
+    return Post.query.filter(
+        func.lower(Post.platform) == values["platform"].lower(),
+        func.lower(Post.caption) == values["caption"].lower(),
+        func.lower(Post.content_type) == values["content_type"].lower(),
+        Post.posted_at == values["posted_at"],
+    ).first()
 
 
 def parse_csv_row(row):
@@ -226,18 +263,29 @@ def import_posts_from_csv(binary_stream, session):
             )
 
         for row_number, row in enumerate(reader, start=2):
+            normalized = normalize_row(row)
+
             try:
-                values = parse_csv_row(normalize_row(row))
+                values = parse_csv_row(normalized)
             except ValueError as error:
                 result.errors.append(f"Row {row_number}: {error}")
                 continue
 
             key = (values["platform"], values["external_id"])
 
-            if key in seen_keys or Post.query.filter_by(
-                platform=values["platform"],
-                external_id=values["external_id"],
-            ).first():
+            is_duplicate = (
+                key in seen_keys
+                or Post.query.filter_by(
+                    platform=values["platform"],
+                    external_id=values["external_id"],
+                ).first() is not None
+                or (
+                    not normalized.get("external_id")
+                    and find_matching_post(values) is not None
+                )
+            )
+
+            if is_duplicate:
                 result.skipped += 1
                 continue
 
@@ -265,7 +313,10 @@ def write_csv(header, rows):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerows(
+        [escape_formula(cell) for cell in row]
+        for row in rows
+    )
     return output.getvalue()
 
 

@@ -1,8 +1,11 @@
-from io import BytesIO
+import csv
+from datetime import datetime
+from io import BytesIO, StringIO
 
 import pytest
 
-from models import MetricSnapshot, Post
+from extensions import db
+from models import MetricSnapshot, Post, record_metric_snapshot
 from services.csv_service import normalize_row
 
 
@@ -181,3 +184,104 @@ def test_timezone_offsets_are_stored_as_utc(client, app):
 
     with app.app_context():
         assert Post.query.one().posted_at.isoformat() == "2026-09-16T17:00:00"
+
+
+# ---------------------------------------------------------
+# CSV injection and re-import duplicates
+# ---------------------------------------------------------
+
+def add_post(caption, source="manual", external_id=None):
+    post = Post(
+        platform="YouTube",
+        caption=caption,
+        content_type="Video",
+        posted_at=datetime(2026, 9, 15, 14, 30),
+        views=100,
+        likes=10,
+        comments=1,
+        shares=0,
+        saves=0,
+        source=source,
+        external_id=external_id,
+    )
+    db.session.add(post)
+    record_metric_snapshot(post)
+    db.session.commit()
+    return post
+
+
+def exported_rows(client):
+    response = client.get("/export-csv")
+    return list(csv.DictReader(StringIO(response.get_data(as_text=True))))
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        '=HYPERLINK("http://evil.example","Click")',
+        "+1 productivity tip",
+        "-5 mistakes to avoid",
+        "@mention reply",
+    ],
+)
+def test_export_escapes_formula_cells(client, app, caption):
+    with app.app_context():
+        add_post(caption)
+
+    [row] = exported_rows(client)
+
+    assert row["caption"] == "'" + caption
+
+
+def test_export_leaves_normal_text_unchanged(client, app):
+    with app.app_context():
+        add_post("Normal caption = fine in the middle")
+
+    [row] = exported_rows(client)
+
+    assert row["caption"] == "Normal caption = fine in the middle"
+    assert row["views"] == "100"
+
+
+def test_escaped_export_reimports_with_original_caption(client, app):
+    caption = "=1+1 is two"
+
+    with app.app_context():
+        add_post(caption, source="csv_import", external_id="formula-1")
+
+    exported = client.get("/export-csv").data
+
+    with app.app_context():
+        db.session.delete(Post.query.one())
+        db.session.commit()
+
+    upload_csv(client, exported)
+
+    with app.app_context():
+        assert Post.query.one().caption == caption
+
+
+def test_reimporting_manual_post_export_creates_no_duplicate(client, app):
+    with app.app_context():
+        add_post("Manually added post")
+
+    exported = client.get("/export-csv").data
+    response = upload_csv(client, exported)
+
+    assert b"Imported 0 posts. Skipped 1" in response.data
+
+    with app.app_context():
+        assert Post.query.count() == 1
+
+
+def test_matching_ignores_case_but_not_time(client, app):
+    with app.app_context():
+        add_post("Manually added post")
+
+    rows = (
+        "youtube,MANUALLY ADDED POST,video,2026-09-15 14:30,1,1,1,1,1,,\n"
+        "YouTube,Manually added post,Video,2026-09-15 14:31,1,1,1,1,1,,\n"
+    )
+    response = upload_csv(client, HEADER + rows)
+
+    assert b"Imported 1 posts. Skipped 1" in response.data
