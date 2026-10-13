@@ -584,6 +584,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  async function readErrorMessage(response) {
+    try {
+      const data = await response.json();
+
+      if (data && data.error) {
+        return data.error;
+      }
+    } catch (error) {
+      // The response was not JSON. Fall back to a generic message.
+    }
+
+    return null;
+  }
+
   async function loadAnalytics(filters) {
     if (requestController) {
       requestController.abort();
@@ -609,9 +623,15 @@ document.addEventListener("DOMContentLoaded", () => {
       );
 
       if (!response.ok) {
-        throw new Error(
+        const requestError = new Error(
           `Request failed with status ${response.status}`
         );
+
+        requestError.userMessage = await readErrorMessage(
+          response
+        );
+
+        throw requestError;
       }
 
       const data = await response.json();
@@ -640,8 +660,9 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error(error);
 
       statusElement.hidden = false;
-      statusElement.textContent =
-        "Analytics could not be loaded. Refresh the page.";
+      statusElement.textContent = error.userMessage
+        ? `Analytics could not be loaded: ${error.userMessage}`
+        : "Analytics could not be loaded. Refresh the page.";
     }
   }
 

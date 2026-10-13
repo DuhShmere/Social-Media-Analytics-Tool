@@ -2,7 +2,7 @@ import csv
 import hashlib
 import io
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from flask import (
@@ -19,6 +19,14 @@ from googleapiclient.errors import HttpError
 
 from extensions import db, migrate
 from models import MetricSnapshot, Post, SocialAccount
+from services.analytics import (
+    PostFilters,
+    apply_post_filters,
+    calculate_best_posting_time,
+    calculate_metric_change,
+    shorten_title,
+    summarize_posts,
+)
 from validators import is_safe_external_url
 
 
@@ -66,24 +74,6 @@ def record_metric_snapshot(post, captured_at=None):
     post.metric_snapshots.append(snapshot)
     return snapshot
 
-
-def calculate_metric_change(current_value, previous_value):
-    current_value = current_value or 0
-    previous_value = previous_value or 0
-    difference = round(current_value - previous_value, 2)
-
-    if previous_value == 0:
-        percentage = 0 if difference == 0 else None
-    else:
-        percentage = round(
-            (difference / previous_value) * 100,
-            2,
-        )
-
-    return {
-        "difference": difference,
-        "percentage": percentage,
-    }
 
 def parse_non_negative_integer(value):
     if value is None or str(value).strip() == "":
@@ -251,199 +241,6 @@ def get_youtube_error_message(error):
     )
 
 
-def shorten_title(title, maximum_length=35):
-    if len(title) <= maximum_length:
-        return title
-
-    return f"{title[:maximum_length - 3]}..."
-
-
-def format_hour(hour):
-    time_value = datetime.strptime(
-        str(hour),
-        "%H",
-    )
-
-    return time_value.strftime(
-        "%I:%M %p"
-    ).lstrip("0")
-
-
-def calculate_best_posting_time(
-    posts,
-    minimum_sample_size=3,
-):
-    groups = {}
-
-    for post in posts:
-        if not post.posted_at:
-            continue
-
-        weekday_number = post.posted_at.weekday()
-        weekday_name = post.posted_at.strftime("%A")
-        window_start = (post.posted_at.hour // 3) * 3
-
-        key = (
-            weekday_number,
-            weekday_name,
-            window_start,
-        )
-
-        if key not in groups:
-            groups[key] = {
-                "posts": 0,
-                "views": 0,
-                "interactions": 0,
-            }
-
-        groups[key]["posts"] += 1
-        groups[key]["views"] += post.views or 0
-        groups[key]["interactions"] += (
-            post.total_interactions
-        )
-
-    eligible_groups = []
-
-    for key, values in groups.items():
-        if values["posts"] < minimum_sample_size:
-            continue
-
-        if values["views"] <= 0:
-            continue
-
-        engagement_rate = round(
-            (
-                values["interactions"]
-                / values["views"]
-            ) * 100,
-            2,
-        )
-
-        eligible_groups.append(
-            {
-                "weekday_number": key[0],
-                "day": key[1],
-                "window_start": key[2],
-                "sample_size": values["posts"],
-                "engagement_rate": engagement_rate,
-            }
-        )
-
-    if not eligible_groups:
-        largest_group_size = max(
-            (
-                values["posts"]
-                for values in groups.values()
-            ),
-            default=0,
-        )
-
-        return {
-            "available": False,
-            "minimum_sample_size": minimum_sample_size,
-            "largest_group_size": largest_group_size,
-        }
-
-    best_group = max(
-        eligible_groups,
-        key=lambda group: (
-            group["engagement_rate"],
-            group["sample_size"],
-        ),
-    )
-
-    start_hour = best_group["window_start"]
-    end_hour = start_hour + 2
-
-    return {
-        "available": True,
-        "day": best_group["day"],
-        "time_window": (
-            f"{format_hour(start_hour)} – "
-            f"{format_hour(end_hour)}"
-        ),
-        "engagement_rate": best_group["engagement_rate"],
-        "sample_size": best_group["sample_size"],
-    }
-
-
-def apply_post_filters(query):
-    account_id = request.args.get(
-        "account_id",
-        type=int,
-    )
-
-    search_term = request.args.get(
-        "search",
-        "",
-    ).strip()
-
-    platform = request.args.get(
-        "platform",
-        "",
-    ).strip()
-
-    content_type = request.args.get(
-        "content_type",
-        "",
-    ).strip()
-
-    start_date_value = request.args.get(
-        "start_date",
-        "",
-    ).strip()
-
-    end_date_value = request.args.get(
-        "end_date",
-        "",
-    ).strip()
-
-    if account_id is not None:
-        query = query.filter(
-            Post.social_account_id == account_id
-        )
-
-    if search_term:
-        query = query.filter(
-            Post.caption.ilike(
-                f"%{search_term}%"
-            )
-        )
-
-    if platform:
-        query = query.filter(
-            Post.platform == platform
-        )
-
-    if content_type:
-        query = query.filter(
-            Post.content_type == content_type
-        )
-
-    if start_date_value:
-        start_date = datetime.strptime(
-            start_date_value,
-            "%Y-%m-%d",
-        )
-
-        query = query.filter(
-            Post.posted_at >= start_date
-        )
-
-    if end_date_value:
-        end_date = datetime.strptime(
-            end_date_value,
-            "%Y-%m-%d",
-        )
-
-        query = query.filter(
-            Post.posted_at
-            < end_date + timedelta(days=1)
-        )
-
-    return query
-
-
 # ---------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------
@@ -475,26 +272,7 @@ def dashboard():
         }
     )
 
-    total_posts = len(posts)
-
-    total_views = sum(
-        post.views or 0
-        for post in posts
-    )
-
-    total_interactions = sum(
-        post.total_interactions
-        for post in posts
-    )
-
-    average_engagement_rate = (
-        round(
-            (total_interactions / total_views) * 100,
-            2,
-        )
-        if total_views > 0
-        else 0
-    )
+    summary = summarize_posts(posts)
 
     return render_template(
         "dashboard.html",
@@ -502,10 +280,10 @@ def dashboard():
         social_accounts=social_accounts,
         platforms=platforms,
         content_types=content_types,
-        total_posts=total_posts,
-        total_views=total_views,
-        total_interactions=total_interactions,
-        average_engagement_rate=average_engagement_rate,
+        total_posts=summary["total_posts"],
+        total_views=summary["total_views"],
+        total_interactions=summary["total_interactions"],
+        average_engagement_rate=summary["engagement_rate"],
     )
 
 
@@ -516,15 +294,11 @@ def dashboard():
 @app.route("/api/analytics")
 def analytics_api():
     try:
-        query = apply_post_filters(Post.query)
-    except ValueError:
-        return jsonify(
-            {
-                "error": "Invalid date filter.",
-            }
-        ), 400
+        filters = PostFilters.from_args(request.args)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
 
-    posts = query.all()
+    posts = apply_post_filters(Post.query, filters).all()
 
     top_posts = sorted(
         posts,
@@ -537,37 +311,17 @@ def analytics_api():
         key=lambda post: post.posted_at,
     )
 
-    likes = sum(post.likes or 0 for post in posts)
-    comments = sum(post.comments or 0 for post in posts)
-    shares = sum(post.shares or 0 for post in posts)
-    saves = sum(post.saves or 0 for post in posts)
-    total_views = sum(post.views or 0 for post in posts)
-
-    total_interactions = (
-        likes
-        + comments
-        + shares
-        + saves
-    )
-
-    overall_engagement_rate = (
-        round(
-            (total_interactions / total_views) * 100,
-            2,
-        )
-        if total_views > 0
-        else 0
-    )
+    summary = summarize_posts(posts)
 
     best_time = calculate_best_posting_time(posts)
 
     return jsonify(
         {
             "summary": {
-                "total_posts": len(posts),
-                "total_views": total_views,
-                "total_interactions": total_interactions,
-                "engagement_rate": overall_engagement_rate,
+                "total_posts": summary["total_posts"],
+                "total_views": summary["total_views"],
+                "total_interactions": summary["total_interactions"],
+                "engagement_rate": summary["engagement_rate"],
             },
             "best_time": best_time,
             "top_posts": [
@@ -591,10 +345,10 @@ def analytics_api():
                 for post in chronological_posts
             ],
             "interactions": {
-                "likes": likes,
-                "comments": comments,
-                "shares": shares,
-                "saves": saves,
+                "likes": summary["likes"],
+                "comments": summary["comments"],
+                "shares": summary["shares"],
+                "saves": summary["saves"],
             },
         }
     )
@@ -1039,15 +793,15 @@ def import_csv():
 @app.route("/export-csv")
 def export_csv():
     try:
-        query = apply_post_filters(Post.query)
-    except ValueError:
+        filters = PostFilters.from_args(request.args)
+    except ValueError as error:
         return Response(
-            "Invalid date filter.",
+            str(error),
             status=400,
             mimetype="text/plain",
         )
 
-    posts = query.order_by(
+    posts = apply_post_filters(Post.query, filters).order_by(
         Post.posted_at.desc()
     ).all()
 
