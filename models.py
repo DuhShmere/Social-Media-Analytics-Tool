@@ -185,3 +185,20 @@ class MetricSnapshot(db.Model):
             (self.total_interactions / self.views) * 100,
             2,
         )
+
+
+def record_metric_snapshot(post, captured_at=None):
+    snapshot = MetricSnapshot(
+        captured_at=(
+            captured_at
+            or datetime.now(timezone.utc).replace(tzinfo=None)
+        ),
+        views=post.views or 0,
+        likes=post.likes or 0,
+        comments=post.comments or 0,
+        shares=post.shares or 0,
+        saves=post.saves or 0,
+    )
+
+    post.metric_snapshots.append(snapshot)
+    return snapshot

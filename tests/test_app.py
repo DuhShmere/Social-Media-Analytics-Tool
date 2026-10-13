@@ -13,9 +13,9 @@ from app import (
     SocialAccount,
     calculate_metric_change,
     db,
-    parse_external_url,
     record_metric_snapshot,
 )
+from validators import parse_external_url
 
 
 def create_post(

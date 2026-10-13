@@ -1,6 +1,3 @@
-import csv
-import hashlib
-import io
 import os
 from datetime import datetime, timezone
 
@@ -18,7 +15,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from extensions import db, migrate
-from models import MetricSnapshot, Post, SocialAccount
+from models import (
+    MetricSnapshot,
+    Post,
+    SocialAccount,
+    record_metric_snapshot,
+)
 from services.analytics import (
     PostFilters,
     apply_post_filters,
@@ -27,7 +29,12 @@ from services.analytics import (
     shorten_title,
     summarize_posts,
 )
-from validators import is_safe_external_url
+from services.csv_service import (
+    export_posts_csv,
+    import_posts_from_csv,
+    sample_csv_content,
+)
+from validators import parse_post_form
 
 
 # ---------------------------------------------------------
@@ -57,151 +64,6 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 # ---------------------------------------------------------
 # General helper functions
 # ---------------------------------------------------------
-
-def record_metric_snapshot(post, captured_at=None):
-    snapshot = MetricSnapshot(
-        captured_at=(
-            captured_at
-            or datetime.now(timezone.utc).replace(tzinfo=None)
-        ),
-        views=post.views or 0,
-        likes=post.likes or 0,
-        comments=post.comments or 0,
-        shares=post.shares or 0,
-        saves=post.saves or 0,
-    )
-
-    post.metric_snapshots.append(snapshot)
-    return snapshot
-
-
-def parse_non_negative_integer(value):
-    if value is None or str(value).strip() == "":
-        return 0
-
-    number = int(str(value).strip())
-
-    if number < 0:
-        raise ValueError("Metrics cannot be negative.")
-
-    return number
-
-
-def parse_csv_datetime(value):
-    value = value.strip()
-
-    if not value:
-        raise ValueError("posted_at is required.")
-
-    parsed = datetime.fromisoformat(
-        value.replace("Z", "+00:00")
-    )
-
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(
-            timezone.utc
-        ).replace(tzinfo=None)
-
-    return parsed
-
-
-def generate_csv_external_id(
-    platform,
-    caption,
-    content_type,
-    posted_at,
-):
-    identifying_value = "|".join(
-        [
-            platform.lower(),
-            caption.lower(),
-            content_type.lower(),
-            posted_at.isoformat(),
-        ]
-    )
-
-    digest = hashlib.sha256(
-        identifying_value.encode("utf-8")
-    ).hexdigest()
-
-    return f"csv-{digest[:32]}"
-
-
-def validate_text_length(value, field_name, limit):
-    if len(value) > limit:
-        raise ValueError(
-            f"{field_name} cannot exceed {limit} characters."
-        )
-
-
-METRIC_FIELDS = ("views", "likes", "comments", "shares", "saves")
-
-
-def parse_post_form(form):
-    """Validate the add/edit post form and return model field values.
-
-    Raises ValueError with a message that is safe to show the user.
-    """
-    platform = form.get("platform", "").strip()
-    caption = form.get("caption", "").strip()
-    content_type = form.get("content_type", "").strip()
-
-    if not platform or not caption or not content_type:
-        raise ValueError(
-            "Platform, caption, and content type are required."
-        )
-
-    validate_text_length(platform, "Platform", 50)
-    validate_text_length(caption, "Caption", 300)
-    validate_text_length(content_type, "Content type", 50)
-
-    try:
-        posted_at = datetime.strptime(
-            form.get("posted_at", ""),
-            "%Y-%m-%dT%H:%M",
-        )
-    except ValueError:
-        raise ValueError(
-            "Enter a valid date and time for when the post "
-            "was published."
-        ) from None
-
-    values = {
-        "platform": platform,
-        "caption": caption,
-        "content_type": content_type,
-        "posted_at": posted_at,
-    }
-
-    for field in METRIC_FIELDS:
-        try:
-            values[field] = parse_non_negative_integer(
-                form.get(field)
-            )
-        except ValueError:
-            raise ValueError(
-                f"{field.capitalize()} must be a whole number "
-                "of 0 or more."
-            ) from None
-
-    return values
-
-
-def parse_external_url(value):
-    value = (value or "").strip()
-
-    if not value:
-        return None
-
-    validate_text_length(value, "external_url", 500)
-
-    if not is_safe_external_url(value):
-        raise ValueError(
-            "external_url must be a full http:// or https:// link."
-        )
-
-    return value
-
 
 def get_thumbnail_url(thumbnails):
     for size in ("high", "medium", "default"):
@@ -559,18 +421,6 @@ def delete_post(post_id):
 
 @app.route("/import-csv", methods=["GET", "POST"])
 def import_csv():
-    required_columns = {
-        "platform",
-        "caption",
-        "content_type",
-        "posted_at",
-        "views",
-        "likes",
-        "comments",
-        "shares",
-        "saves",
-    }
-
     if request.method == "GET":
         return render_template("import_csv.html")
 
@@ -589,180 +439,13 @@ def import_csv():
         )
 
     try:
-        text_stream = io.TextIOWrapper(
+        result = import_posts_from_csv(
             uploaded_file.stream,
-            encoding="utf-8-sig",
-            newline="",
+            db.session,
         )
-
-        reader = csv.DictReader(text_stream)
-
-        if not reader.fieldnames:
-            raise ValueError(
-                "The CSV file does not contain a header row."
-            )
-
-        fieldnames = {
-            field.strip()
-            for field in reader.fieldnames
-            if field
-        }
-
-        missing_columns = required_columns - fieldnames
-
-        if missing_columns:
-            missing_text = ", ".join(
-                sorted(missing_columns)
-            )
-
-            raise ValueError(
-                f"Missing required columns: {missing_text}"
-            )
-
-        imported_count = 0
-        skipped_count = 0
-        row_errors = []
-
-        for row_number, row in enumerate(
-            reader,
-            start=2,
-        ):
-            try:
-                platform = row.get(
-                    "platform",
-                    "",
-                ).strip()
-
-                caption = row.get(
-                    "caption",
-                    "",
-                ).strip()
-
-                content_type = row.get(
-                    "content_type",
-                    "",
-                ).strip()
-
-                if not platform:
-                    raise ValueError(
-                        "platform is required."
-                    )
-
-                if not caption:
-                    raise ValueError(
-                        "caption is required."
-                    )
-
-                if not content_type:
-                    raise ValueError(
-                        "content_type is required."
-                    )
-
-                validate_text_length(
-                    platform,
-                    "platform",
-                    50,
-                )
-
-                validate_text_length(
-                    caption,
-                    "caption",
-                    300,
-                )
-
-                validate_text_length(
-                    content_type,
-                    "content_type",
-                    50,
-                )
-
-                posted_at = parse_csv_datetime(
-                    row.get("posted_at", "")
-                )
-
-                views = parse_non_negative_integer(
-                    row.get("views")
-                )
-
-                likes = parse_non_negative_integer(
-                    row.get("likes")
-                )
-
-                comments = parse_non_negative_integer(
-                    row.get("comments")
-                )
-
-                shares = parse_non_negative_integer(
-                    row.get("shares")
-                )
-
-                saves = parse_non_negative_integer(
-                    row.get("saves")
-                )
-
-                external_id = row.get(
-                    "external_id",
-                    "",
-                ).strip()
-
-                if not external_id:
-                    external_id = generate_csv_external_id(
-                        platform,
-                        caption,
-                        content_type,
-                        posted_at,
-                    )
-
-                external_url = parse_external_url(
-                    row.get("external_url")
-                )
-
-                duplicate = Post.query.filter_by(
-                    platform=platform,
-                    external_id=external_id,
-                ).first()
-
-                if duplicate:
-                    skipped_count += 1
-                    continue
-
-                post = Post(
-                    platform=platform,
-                    caption=caption,
-                    content_type=content_type,
-                    posted_at=posted_at,
-                    views=views,
-                    likes=likes,
-                    comments=comments,
-                    shares=shares,
-                    saves=saves,
-                    external_id=external_id,
-                    external_url=external_url,
-                    source="csv_import",
-                )
-
-                db.session.add(post)
-                record_metric_snapshot(post)
-                imported_count += 1
-
-            except (ValueError, TypeError) as error:
-                row_errors.append(
-                    f"Row {row_number}: {error}"
-                )
-
         db.session.commit()
 
-        return render_template(
-            "import_csv.html",
-            result={
-                "imported": imported_count,
-                "skipped": skipped_count,
-                "invalid": len(row_errors),
-                "errors": row_errors[:20],
-            },
-        )
-
-    except (UnicodeDecodeError, csv.Error, ValueError) as error:
+    except ValueError as error:
         db.session.rollback()
 
         return render_template(
@@ -785,6 +468,18 @@ def import_csv():
             ),
         )
 
+    app.logger.info(
+        "CSV import finished: %s imported, %s skipped, %s invalid.",
+        result.imported,
+        result.skipped,
+        len(result.errors),
+    )
+
+    return render_template(
+        "import_csv.html",
+        result=result.as_template_data(),
+    )
+
 
 # ---------------------------------------------------------
 # CSV export
@@ -805,58 +500,13 @@ def export_csv():
         Post.posted_at.desc()
     ).all()
 
-    output = io.StringIO()
-
-    fieldnames = [
-        "platform",
-        "caption",
-        "content_type",
-        "posted_at",
-        "views",
-        "likes",
-        "comments",
-        "shares",
-        "saves",
-        "external_id",
-        "external_url",
-        "source",
-    ]
-
-    writer = csv.DictWriter(
-        output,
-        fieldnames=fieldnames,
-    )
-
-    writer.writeheader()
-
-    for post in posts:
-        writer.writerow(
-            {
-                "platform": post.platform,
-                "caption": post.caption,
-                "content_type": post.content_type,
-                "posted_at": post.posted_at.isoformat(
-                    sep=" ",
-                    timespec="minutes",
-                ),
-                "views": post.views,
-                "likes": post.likes,
-                "comments": post.comments,
-                "shares": post.shares,
-                "saves": post.saves,
-                "external_id": post.external_id or "",
-                "external_url": post.external_url or "",
-                "source": post.source,
-            }
-        )
-
     filename = (
         "social-media-analytics-"
         f"{datetime.now().strftime('%Y-%m-%d')}.csv"
     )
 
     return Response(
-        output.getvalue(),
+        export_posts_csv(posts),
         mimetype="text/csv",
         headers={
             "Content-Disposition": (
@@ -872,60 +522,8 @@ def export_csv():
 
 @app.route("/sample-csv")
 def sample_csv():
-    output = io.StringIO()
-
-    writer = csv.writer(output)
-
-    writer.writerow(
-        [
-            "platform",
-            "caption",
-            "content_type",
-            "posted_at",
-            "views",
-            "likes",
-            "comments",
-            "shares",
-            "saves",
-            "external_id",
-            "external_url",
-        ]
-    )
-
-    writer.writerow(
-        [
-            "Instagram",
-            "Product launch",
-            "Carousel",
-            "2026-09-15 14:30",
-            "12000",
-            "850",
-            "63",
-            "42",
-            "130",
-            "instagram-example-101",
-            "https://instagram.com/p/example",
-        ]
-    )
-
-    writer.writerow(
-        [
-            "TikTok",
-            "Behind the scenes",
-            "Video",
-            "2026-09-17 18:00",
-            "43000",
-            "5100",
-            "280",
-            "430",
-            "0",
-            "tiktok-example-202",
-            "https://tiktok.com/@example/video/202",
-        ]
-    )
-
     return Response(
-        output.getvalue(),
+        sample_csv_content(),
         mimetype="text/csv",
         headers={
             "Content-Disposition": (
