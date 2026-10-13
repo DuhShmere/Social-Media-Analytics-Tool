@@ -1,7 +1,13 @@
 from datetime import datetime
 from io import BytesIO
 
-from app import MetricSnapshot, Post, db, record_metric_snapshot
+from app import (
+    MetricSnapshot,
+    Post,
+    calculate_metric_change,
+    db,
+    record_metric_snapshot,
+)
 
 
 def create_post(
@@ -360,3 +366,67 @@ def test_deleting_post_deletes_snapshots(client, app):
     with app.app_context():
         assert db.session.get(Post, post_id) is None
         assert MetricSnapshot.query.filter_by(post_id=post_id).count() == 0
+
+
+def test_metric_change_rounds_engagement_point_difference():
+    # 13.6 - 13.5 is 0.09999999999999964 in floating-point math.
+    change = calculate_metric_change(13.6, 13.5)
+
+    assert change["difference"] == 0.1
+    assert change["percentage"] == 0.74
+
+
+def test_metric_change_handles_zero_and_missing_previous_values():
+    assert calculate_metric_change(0, 0) == {
+        "difference": 0,
+        "percentage": 0,
+    }
+
+    # Growth from zero has no meaningful percentage.
+    assert calculate_metric_change(500, 0) == {
+        "difference": 500,
+        "percentage": None,
+    }
+
+    assert calculate_metric_change(250, None) == {
+        "difference": 250,
+        "percentage": None,
+    }
+
+    assert calculate_metric_change(800, 1000) == {
+        "difference": -200,
+        "percentage": -20.0,
+    }
+
+
+def test_post_detail_displays_rounded_engagement_change(client, app):
+    with app.app_context():
+        # 135 / 1000 interactions = 13.5% engagement.
+        post = create_post(
+            views=1000,
+            likes=100,
+            comments=20,
+            shares=10,
+            saves=5,
+        )
+        record_metric_snapshot(
+            post,
+            captured_at=datetime(2026, 9, 20, 9, 0),
+        )
+
+        # 136 / 1000 interactions = 13.6% engagement.
+        post.likes = 101
+        record_metric_snapshot(
+            post,
+            captured_at=datetime(2026, 9, 21, 9, 0),
+        )
+
+        db.session.commit()
+        post_id = post.id
+
+    response = client.get(f"/posts/{post_id}")
+
+    assert response.status_code == 200
+    assert b"+0.1" in response.data
+    assert b"0.0999" not in response.data
+
