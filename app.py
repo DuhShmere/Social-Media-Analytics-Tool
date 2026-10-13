@@ -11,8 +11,6 @@ from flask import (
     request,
     url_for,
 )
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 from extensions import db, migrate
 from models import (
@@ -33,6 +31,13 @@ from services.csv_service import (
     export_posts_csv,
     import_posts_from_csv,
     sample_csv_content,
+)
+from services.youtube import (
+    ApiKeyRedactionFilter,
+    YouTubeClient,
+    YouTubeError,
+    normalize_handle,
+    sync_channel,
 )
 from validators import parse_post_form
 
@@ -55,6 +60,9 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
+# Errors from the YouTube client can include the API key in a URL.
+app.logger.addFilter(ApiKeyRedactionFilter())
+
 db.init_app(app)
 migrate.init_app(app, db)
 
@@ -64,44 +72,6 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 # ---------------------------------------------------------
 # General helper functions
 # ---------------------------------------------------------
-
-def get_thumbnail_url(thumbnails):
-    for size in ("high", "medium", "default"):
-        thumbnail = thumbnails.get(size)
-
-        if thumbnail and thumbnail.get("url"):
-            return thumbnail["url"]
-
-    return None
-
-
-def get_youtube_error_message(error):
-    status_code = getattr(
-        error.resp,
-        "status",
-        None,
-    )
-
-    if status_code == 400:
-        return (
-            "YouTube rejected the request. Check that the "
-            "channel handle is correct."
-        )
-
-    if status_code == 403:
-        return (
-            "YouTube denied the request. Check your API key, "
-            "API restrictions, and remaining quota."
-        )
-
-    if status_code == 404:
-        return "The requested YouTube channel was not found."
-
-    return (
-        "YouTube could not complete the request. "
-        "Please try again."
-    )
-
 
 # ---------------------------------------------------------
 # Dashboard
@@ -551,202 +521,36 @@ def import_youtube():
             ),
         )
 
-    channel_handle = request.form.get(
-        "channel_handle",
-        "",
-    ).strip()
-
-    if not channel_handle:
-        return render_template(
-            "import_youtube.html",
-            error="Enter a YouTube channel handle.",
-        )
-
-    channel_handle = channel_handle.lstrip("@")
-
     try:
-        youtube = build(
-            "youtube",
-            "v3",
-            developerKey=YOUTUBE_API_KEY,
-            cache_discovery=False,
+        handle = normalize_handle(
+            request.form.get("channel_handle")
         )
 
-        channel_response = youtube.channels().list(
-            part="snippet,contentDetails,statistics",
-            forHandle=channel_handle,
-            maxResults=1,
-        ).execute()
-
-        channels = channel_response.get("items", [])
-
-        if not channels:
-            return render_template(
-                "import_youtube.html",
-                error=(
-                    "YouTube channel not found. Check the "
-                    "channel handle and try again."
-                ),
-            )
-
-        channel = channels[0]
-        channel_id = channel["id"]
-        channel_name = channel["snippet"]["title"]
-        channel_handle_with_at = f"@{channel_handle}"
-
-        social_account = SocialAccount.query.filter_by(
-            platform="YouTube",
-            external_account_id=channel_id,
-        ).first()
-
-        if social_account is None:
-            social_account = SocialAccount(
-                platform="YouTube",
-                account_name=channel_name,
-                account_handle=channel_handle_with_at,
-                external_account_id=channel_id,
-            )
-
-            db.session.add(social_account)
-
-        else:
-            social_account.account_name = channel_name
-            social_account.account_handle = (
-                channel_handle_with_at
-            )
-
-        sync_time = datetime.now(
-            timezone.utc
-        ).replace(tzinfo=None)
-
-        social_account.last_synced_at = sync_time
-
-        db.session.flush()
-
-        uploads_playlist_id = channel[
-            "contentDetails"
-        ]["relatedPlaylists"]["uploads"]
-
-        playlist_response = youtube.playlistItems().list(
-            part="contentDetails",
-            playlistId=uploads_playlist_id,
-            maxResults=50,
-        ).execute()
-
-        video_ids = [
-            item["contentDetails"]["videoId"]
-            for item in playlist_response.get("items", [])
-        ]
-
-        if not video_ids:
-            db.session.rollback()
-
-            return render_template(
-                "import_youtube.html",
-                error=(
-                    "No public videos were found for this "
-                    "YouTube channel."
-                ),
-            )
-
-        video_response = youtube.videos().list(
-            part="snippet,statistics",
-            id=",".join(video_ids),
-        ).execute()
-
-        imported_count = 0
-        updated_count = 0
-
-        for video in video_response.get("items", []):
-            video_id = video["id"]
-            snippet = video.get("snippet", {})
-            statistics = video.get("statistics", {})
-
-            published_at = datetime.fromisoformat(
-                snippet["publishedAt"].replace(
-                    "Z",
-                    "+00:00",
-                )
-            ).replace(tzinfo=None)
-
-            post = Post.query.filter_by(
-                platform="YouTube",
-                external_id=video_id,
-            ).first()
-
-            if post is None:
-                post = Post(
-                    platform="YouTube",
-                    caption=snippet.get(
-                        "title",
-                        "Untitled YouTube video",
-                    ),
-                    content_type="Video",
-                    posted_at=published_at,
-                    external_id=video_id,
-                    source="youtube_api",
-                    social_account=social_account,
-                )
-
-                db.session.add(post)
-                imported_count += 1
-
-            else:
-                updated_count += 1
-
-            post.platform = "YouTube"
-            post.caption = snippet.get(
-                "title",
-                "Untitled YouTube video",
-            )
-            post.content_type = "Video"
-            post.posted_at = published_at
-            post.views = int(
-                statistics.get("viewCount", 0)
-            )
-            post.likes = int(
-                statistics.get("likeCount", 0)
-            )
-            post.comments = int(
-                statistics.get("commentCount", 0)
-            )
-            post.shares = 0
-            post.saves = 0
-            post.external_url = (
-                f"https://www.youtube.com/watch?v={video_id}"
-            )
-            post.thumbnail_url = get_thumbnail_url(
-                snippet.get("thumbnails", {})
-            )
-            post.source = "youtube_api"
-            post.social_account = social_account
-
-            record_metric_snapshot(
-                post,
-                captured_at=sync_time,
-            )
-
-        db.session.commit()
-
-        return render_template(
-            "import_youtube.html",
-            success=(
-                f"Imported {imported_count} new videos and "
-                f"updated {updated_count} existing videos "
-                f"from {channel_name}."
+        result = sync_channel(
+            YouTubeClient(YOUTUBE_API_KEY),
+            handle,
+            db.session,
+            synced_at=datetime.now(timezone.utc).replace(
+                tzinfo=None
             ),
         )
 
-    except HttpError as error:
+        db.session.commit()
+
+    except YouTubeError as error:
         db.session.rollback()
 
-        app.logger.exception(
-            "YouTube API request failed."
+        # Expected failures (quota, bad handle, network) are logged
+        # without a traceback. The cause holds the original error.
+        app.logger.warning(
+            "YouTube sync failed: %s (cause: %r)",
+            error,
+            error.__cause__,
         )
 
         return render_template(
             "import_youtube.html",
-            error=get_youtube_error_message(error),
+            error=str(error),
         )
 
     except Exception:
@@ -763,6 +567,22 @@ def import_youtube():
                 "the channel. Check the terminal for details."
             ),
         )
+
+    app.logger.info(
+        "YouTube sync finished for %s: %s imported, %s updated.",
+        result.channel_name,
+        result.imported,
+        result.updated,
+    )
+
+    return render_template(
+        "import_youtube.html",
+        success=(
+            f"Imported {result.imported} new videos and "
+            f"updated {result.updated} existing videos "
+            f"from {result.channel_name}."
+        ),
+    )
 
 
 # ---------------------------------------------------------
