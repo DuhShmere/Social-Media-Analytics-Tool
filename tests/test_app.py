@@ -1,11 +1,14 @@
 from datetime import datetime
 from io import BytesIO
 
+import pytest
+
 from app import (
     MetricSnapshot,
     Post,
     calculate_metric_change,
     db,
+    parse_external_url,
     record_metric_snapshot,
 )
 
@@ -430,3 +433,78 @@ def test_post_detail_displays_rounded_engagement_change(client, app):
     assert b"+0.1" in response.data
     assert b"0.0999" not in response.data
 
+
+def test_parse_external_url_accepts_only_http_links():
+    assert parse_external_url("") is None
+    assert parse_external_url("   ") is None
+    assert parse_external_url(None) is None
+    assert parse_external_url(
+        " https://www.instagram.com/p/example/ "
+    ) == "https://www.instagram.com/p/example/"
+    assert parse_external_url(
+        "HTTP://example.com/post"
+    ) == "HTTP://example.com/post"
+
+    for unsafe_url in (
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "ftp://example.com/file",
+        "www.example.com/no-scheme",
+        "https://",
+    ):
+        with pytest.raises(ValueError):
+            parse_external_url(unsafe_url)
+
+    with pytest.raises(ValueError):
+        parse_external_url("https://example.com/" + "a" * 500)
+
+
+def test_csv_import_rejects_unsafe_external_url(client, app):
+    csv_content = (
+        "platform,caption,content_type,posted_at,views,likes,"
+        "comments,shares,saves,external_id,external_url\n"
+        "Instagram,Unsafe link,Reel,2026-09-15T14:30,"
+        "100,10,1,1,1,unsafe-1,javascript:alert(1)\n"
+        "Instagram,Safe link,Reel,2026-09-16T14:30,"
+        "100,10,1,1,1,safe-1,https://www.instagram.com/p/safe/\n"
+    )
+
+    response = client.post(
+        "/import-csv",
+        data={
+            "csv_file": (
+                BytesIO(csv_content.encode("utf-8")),
+                "posts.csv",
+            )
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert b"Row 2: external_url must be" in response.data
+
+    with app.app_context():
+        assert Post.query.filter_by(external_id="unsafe-1").first() is None
+
+        safe_post = Post.query.filter_by(external_id="safe-1").one()
+        assert safe_post.external_url == "https://www.instagram.com/p/safe/"
+
+
+def test_unsafe_stored_url_is_never_rendered_as_link(client, app):
+    with app.app_context():
+        post = create_post(caption="Legacy unsafe link")
+        post.external_url = "javascript:alert(1)"
+        record_metric_snapshot(post)
+        db.session.commit()
+        post_id = post.id
+
+        assert post.safe_external_url is None
+
+    dashboard_response = client.get("/")
+    detail_response = client.get(f"/posts/{post_id}")
+
+    assert dashboard_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert b"javascript:" not in dashboard_response.data
+    assert b"javascript:" not in detail_response.data

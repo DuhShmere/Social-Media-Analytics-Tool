@@ -3,6 +3,7 @@ import hashlib
 import io
 import os
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from flask import (
@@ -161,6 +162,16 @@ class Post(db.Model):
             "csv_import",
         }
 
+    @property
+    def safe_external_url(self):
+        # Never render a stored URL as a link unless it is http(s).
+        # This blocks schemes such as javascript: even if one was
+        # saved before input validation existed.
+        if is_safe_external_url(self.external_url):
+            return self.external_url
+
+        return None
+
 
 class MetricSnapshot(db.Model):
     __tablename__ = "metric_snapshot"
@@ -310,6 +321,36 @@ def validate_text_length(value, field_name, limit):
         raise ValueError(
             f"{field_name} cannot exceed {limit} characters."
         )
+
+
+def is_safe_external_url(value):
+    if not value:
+        return False
+
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return False
+
+    return parts.scheme.lower() in {"http", "https"} and bool(
+        parts.netloc
+    )
+
+
+def parse_external_url(value):
+    value = (value or "").strip()
+
+    if not value:
+        return None
+
+    validate_text_length(value, "external_url", 500)
+
+    if not is_safe_external_url(value):
+        raise ValueError(
+            "external_url must be a full http:// or https:// link."
+        )
+
+    return value
 
 
 def get_thumbnail_url(thumbnails):
@@ -1129,10 +1170,9 @@ def import_csv():
                         posted_at,
                     )
 
-                external_url = row.get(
-                    "external_url",
-                    "",
-                ).strip() or None
+                external_url = parse_external_url(
+                    row.get("external_url")
+                )
 
                 duplicate = Post.query.filter_by(
                     platform=platform,

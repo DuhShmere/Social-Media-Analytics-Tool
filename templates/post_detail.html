@@ -23,10 +23,10 @@
     </p>
   </div>
 
-  {% if post.external_url %}
+  {% if post.safe_external_url %}
   <a
     class="button button-secondary"
-    href="{{ post.external_url }}"
+    href="{{ post.safe_external_url }}"
     target="_blank"
     rel="noopener noreferrer"
   >
