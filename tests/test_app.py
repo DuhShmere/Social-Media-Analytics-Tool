@@ -1,11 +1,16 @@
 from datetime import datetime
 from io import BytesIO
+from unittest.mock import MagicMock
 
+import httplib2
 import pytest
+from googleapiclient.errors import HttpError
 
+import app as app_module
 from app import (
     MetricSnapshot,
     Post,
+    SocialAccount,
     calculate_metric_change,
     db,
     parse_external_url,
@@ -508,3 +513,265 @@ def test_unsafe_stored_url_is_never_rendered_as_link(client, app):
     assert detail_response.status_code == 200
     assert b"javascript:" not in dashboard_response.data
     assert b"javascript:" not in detail_response.data
+
+
+# ---------------------------------------------------------
+# YouTube synchronization (mocked, no real API requests)
+# ---------------------------------------------------------
+
+def youtube_video(video_id, title, views, likes, comments):
+    return {
+        "id": video_id,
+        "snippet": {
+            "title": title,
+            "publishedAt": "2026-09-10T15:00:00Z",
+            "thumbnails": {
+                "high": {"url": f"https://i.ytimg.com/{video_id}.jpg"},
+            },
+        },
+        "statistics": {
+            "viewCount": str(views),
+            "likeCount": str(likes),
+            "commentCount": str(comments),
+        },
+    }
+
+
+def fake_youtube_client(videos, channel_found=True, video_error=None):
+    youtube = MagicMock()
+
+    channel_items = []
+
+    if channel_found:
+        channel_items.append(
+            {
+                "id": "UC-test-channel",
+                "snippet": {"title": "Test Channel"},
+                "contentDetails": {
+                    "relatedPlaylists": {"uploads": "UU-test-uploads"},
+                },
+            }
+        )
+
+    youtube.channels.return_value.list.return_value.execute.return_value = {
+        "items": channel_items,
+    }
+
+    youtube.playlistItems.return_value.list.return_value.execute.return_value = {
+        "items": [
+            {"contentDetails": {"videoId": video["id"]}}
+            for video in videos
+        ],
+    }
+
+    videos_request = youtube.videos.return_value.list.return_value
+
+    if video_error is not None:
+        videos_request.execute.side_effect = video_error
+    else:
+        videos_request.execute.return_value = {"items": videos}
+
+    return youtube
+
+
+@pytest.fixture()
+def mock_youtube(monkeypatch):
+    """Replace the YouTube client builder with a fake client."""
+    state = {"client": None}
+
+    def fake_build(*args, **kwargs):
+        return state["client"]
+
+    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", "test-api-key")
+    monkeypatch.setattr(app_module, "build", fake_build)
+
+    def use(client):
+        state["client"] = client
+        return client
+
+    return use
+
+
+def sync_channel(client, handle="@testchannel"):
+    return client.post(
+        "/import-youtube",
+        data={"channel_handle": handle},
+    )
+
+
+def test_youtube_sync_imports_videos_and_snapshots(
+    client,
+    app,
+    mock_youtube,
+):
+    youtube = mock_youtube(
+        fake_youtube_client(
+            [
+                youtube_video("vid-1", "First video", 1000, 100, 10),
+                youtube_video("vid-2", "Second video", 2000, 150, 20),
+            ]
+        )
+    )
+
+    response = sync_channel(client)
+
+    assert response.status_code == 200
+    assert b"Imported 2 new videos and updated 0" in response.data
+
+    youtube.channels.return_value.list.assert_called_once_with(
+        part="snippet,contentDetails,statistics",
+        forHandle="testchannel",
+        maxResults=1,
+    )
+
+    with app.app_context():
+        account = SocialAccount.query.one()
+        assert account.account_name == "Test Channel"
+        assert account.account_handle == "@testchannel"
+        assert account.last_synced_at is not None
+
+        posts = Post.query.order_by(Post.external_id).all()
+        assert [post.external_id for post in posts] == ["vid-1", "vid-2"]
+
+        first = posts[0]
+        assert first.source == "youtube_api"
+        assert first.views == 1000
+        assert first.likes == 100
+        assert first.comments == 10
+        assert first.social_account_id == account.id
+        assert first.external_url == (
+            "https://www.youtube.com/watch?v=vid-1"
+        )
+
+        for post in posts:
+            assert len(post.metric_snapshots) == 1
+
+
+def test_youtube_resync_updates_videos_without_duplicates(
+    client,
+    app,
+    mock_youtube,
+):
+    mock_youtube(
+        fake_youtube_client(
+            [youtube_video("vid-1", "Original title", 1000, 100, 10)]
+        )
+    )
+    sync_channel(client)
+
+    mock_youtube(
+        fake_youtube_client(
+            [youtube_video("vid-1", "Renamed title", 1500, 130, 12)]
+        )
+    )
+    response = sync_channel(client)
+
+    assert response.status_code == 200
+    assert b"Imported 0 new videos and updated 1" in response.data
+
+    with app.app_context():
+        assert SocialAccount.query.count() == 1
+
+        post = Post.query.one()
+        assert post.caption == "Renamed title"
+        assert post.views == 1500
+        assert post.likes == 130
+
+        snapshots = MetricSnapshot.query.filter_by(
+            post_id=post.id
+        ).order_by(MetricSnapshot.id).all()
+
+        assert [snapshot.views for snapshot in snapshots] == [1000, 1500]
+
+
+def test_youtube_api_error_shows_message_and_saves_nothing(
+    client,
+    app,
+    mock_youtube,
+):
+    quota_error = HttpError(
+        httplib2.Response({"status": 403}),
+        b'{"error": {"message": "quotaExceeded"}}',
+    )
+
+    mock_youtube(
+        fake_youtube_client(
+            [youtube_video("vid-1", "First video", 1000, 100, 10)],
+            video_error=quota_error,
+        )
+    )
+
+    response = sync_channel(client)
+
+    assert response.status_code == 200
+    assert b"YouTube denied the request" in response.data
+
+    # The account was flushed before the failure; it must be rolled back.
+    with app.app_context():
+        assert SocialAccount.query.count() == 0
+        assert Post.query.count() == 0
+        assert MetricSnapshot.query.count() == 0
+
+
+def test_youtube_channel_not_found_shows_message(
+    client,
+    app,
+    mock_youtube,
+):
+    mock_youtube(fake_youtube_client([], channel_found=False))
+
+    response = sync_channel(client, handle="@missing")
+
+    assert response.status_code == 200
+    assert b"YouTube channel not found" in response.data
+
+    with app.app_context():
+        assert SocialAccount.query.count() == 0
+
+
+def test_youtube_import_requires_api_key(client, monkeypatch):
+    def fail_build(*args, **kwargs):
+        raise AssertionError("YouTube client should not be built.")
+
+    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", None)
+    monkeypatch.setattr(app_module, "build", fail_build)
+
+    response = sync_channel(client)
+
+    assert response.status_code == 200
+    assert b"The YouTube API key is missing" in response.data
+
+
+def test_youtube_post_cannot_be_edited_or_deleted(client, app):
+    with app.app_context():
+        post = create_post(
+            caption="Synced video",
+            external_id="vid-protected",
+            source="youtube_api",
+        )
+        post_id = post.id
+
+    edit_response = client.post(
+        f"/posts/{post_id}/edit",
+        data={
+            "platform": "YouTube",
+            "caption": "Tampered caption",
+            "content_type": "Video",
+            "posted_at": "2026-09-15T14:30",
+            "views": "1",
+            "likes": "0",
+            "comments": "0",
+            "shares": "0",
+            "saves": "0",
+        },
+    )
+    delete_response = client.post(f"/posts/{post_id}/delete")
+
+    assert edit_response.status_code == 302
+    assert delete_response.status_code == 302
+
+    with app.app_context():
+        post = db.session.get(Post, post_id)
+        assert post is not None
+        assert post.caption == "Synced video"
+        assert post.views == 1000
