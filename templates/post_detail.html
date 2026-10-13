@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-heading post-detail-heading">
   <div>
-    <a class="back-link" href="{{ url_for('dashboard') }}">
+    <a class="back-link" href="{{ url_for('main.dashboard') }}">
       ← Back to dashboard
     </a>
 
@@ -108,7 +108,7 @@
 <section
   id="post-history"
   class="analytics-section"
-  data-api-url="{{ url_for('post_history_api', post_id=post.id) }}"
+  data-api-url="{{ url_for('api.post_history_api', post_id=post.id) }}"
 >
   <div class="analytics-heading">
     <div>

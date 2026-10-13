@@ -6,16 +6,12 @@ import httplib2
 import pytest
 from googleapiclient.errors import HttpError
 
-import app as app_module
+import routes.api
+import routes.main
 import services.youtube as youtube_service
-from app import (
-    MetricSnapshot,
-    Post,
-    SocialAccount,
-    calculate_metric_change,
-    db,
-    record_metric_snapshot,
-)
+from extensions import db
+from models import MetricSnapshot, Post, SocialAccount, record_metric_snapshot
+from services.analytics import calculate_metric_change
 from validators import parse_external_url
 
 
@@ -576,14 +572,14 @@ def fake_youtube_client(videos, channel_found=True, video_error=None):
 
 
 @pytest.fixture()
-def mock_youtube(monkeypatch):
+def mock_youtube(app, monkeypatch):
     """Replace the YouTube client builder with a fake client."""
     state = {"client": None}
 
     def fake_build(*args, **kwargs):
         return state["client"]
 
-    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", "test-api-key")
+    monkeypatch.setitem(app.config, "YOUTUBE_API_KEY", "test-api-key")
     monkeypatch.setattr(youtube_service, "build", fake_build)
 
     def use(client):
@@ -730,11 +726,11 @@ def test_youtube_channel_not_found_shows_message(
         assert SocialAccount.query.count() == 0
 
 
-def test_youtube_import_requires_api_key(client, monkeypatch):
+def test_youtube_import_requires_api_key(client, app, monkeypatch):
     def fail_build(*args, **kwargs):
         raise AssertionError("YouTube client should not be built.")
 
-    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", None)
+    monkeypatch.setitem(app.config, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(youtube_service, "build", fail_build)
 
     response = sync_channel(client)
@@ -881,8 +877,8 @@ def test_unexpected_error_returns_500_page(client, app, monkeypatch):
 
     # TESTING mode re-raises errors; disable that to see the 500 page.
     monkeypatch.setitem(app.config, "PROPAGATE_EXCEPTIONS", False)
-    monkeypatch.setattr(app_module, "calculate_best_posting_time", broken)
-    monkeypatch.setattr(app_module, "calculate_metric_change", broken)
+    monkeypatch.setattr(routes.api, "calculate_best_posting_time", broken)
+    monkeypatch.setattr(routes.main, "calculate_metric_change", broken)
 
     with app.app_context():
         post = create_post()

@@ -34,7 +34,7 @@ Analytics Tool {% endblock %} {% block content %}
     </div>
 
     <div class="form-actions">
-      <a class="button button-secondary" href="{{ url_for('dashboard') }}">
+      <a class="button button-secondary" href="{{ url_for('main.dashboard') }}">
         Return to Dashboard
       </a>
 
@@ -44,7 +44,7 @@ Analytics Tool {% endblock %} {% block content %}
 
   {% if success %}
   <div class="next-step">
-    <a class="button" href="{{ url_for('dashboard') }}">
+    <a class="button" href="{{ url_for('main.dashboard') }}">
       View Imported Videos
     </a>
   </div>

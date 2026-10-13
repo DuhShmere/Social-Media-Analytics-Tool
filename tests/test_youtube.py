@@ -7,7 +7,6 @@ import pytest
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpMockSequence
 
-import app as app_module
 import services.youtube as youtube_service
 from services.youtube import (
     NUM_RETRIES,
@@ -112,11 +111,11 @@ def test_normalize_handle_rejects_invalid_values(value, expected_message):
         normalize_handle(value)
 
 
-def test_invalid_handle_is_rejected_before_calling_youtube(client, monkeypatch):
+def test_invalid_handle_is_rejected_before_calling_youtube(client, app, monkeypatch):
     def fail_build(*args, **kwargs):
         raise AssertionError("YouTube client should not be built.")
 
-    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", "test-api-key")
+    monkeypatch.setitem(app.config, "YOUTUBE_API_KEY", "test-api-key")
     monkeypatch.setattr(youtube_service, "build", fail_build)
 
     result = client.post(
@@ -252,10 +251,10 @@ def test_api_key_is_redacted_from_retry_logs(caplog):
     assert SECRET_KEY not in caplog.text
 
 
-def test_api_key_is_redacted_from_sync_error_logs(client, monkeypatch, caplog):
+def test_api_key_is_redacted_from_sync_error_logs(client, app, monkeypatch, caplog):
     http = RecordingHttp([response(403, error_body(403, "quotaExceeded"))])
 
-    monkeypatch.setattr(app_module, "YOUTUBE_API_KEY", SECRET_KEY)
+    monkeypatch.setitem(app.config, "YOUTUBE_API_KEY", SECRET_KEY)
     monkeypatch.setattr(httplib2, "Http", lambda timeout: http)
 
     with caplog.at_level(logging.WARNING):
@@ -270,7 +269,7 @@ def test_api_key_is_redacted_from_sync_error_logs(client, monkeypatch, caplog):
     assert SECRET_KEY not in caplog.text
 
 
-def test_api_key_is_redacted_from_tracebacks(caplog):
+def test_api_key_is_redacted_from_tracebacks(app, caplog):
     error = HttpError(
         httplib2.Response({"status": 500}),
         b"{}",
@@ -281,7 +280,7 @@ def test_api_key_is_redacted_from_tracebacks(caplog):
         try:
             raise error
         except HttpError:
-            app_module.app.logger.exception("Unexpected YouTube import error.")
+            app.logger.exception("Unexpected YouTube import error.")
 
     assert "Traceback" in caplog.text
     assert SECRET_KEY not in caplog.text

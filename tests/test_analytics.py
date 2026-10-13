@@ -2,7 +2,8 @@ from datetime import date, datetime
 
 import pytest
 
-from app import Post, SocialAccount, db
+from extensions import db
+from models import Post, SocialAccount
 from services.analytics import (
     PostFilters,
     apply_post_filters,

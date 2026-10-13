@@ -54,11 +54,11 @@ Tool {% endblock %} {% block content %}
 
       <p>external_id and external_url are optional.</p>
 
-      <a href="{{ url_for('sample_csv') }}"> Download sample CSV </a>
+      <a href="{{ url_for('imports.sample_csv') }}"> Download sample CSV </a>
     </div>
 
     <div class="form-actions">
-      <a class="button button-secondary" href="{{ url_for('dashboard') }}">
+      <a class="button button-secondary" href="{{ url_for('main.dashboard') }}">
         Cancel
       </a>
 

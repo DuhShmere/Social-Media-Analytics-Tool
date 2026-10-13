@@ -11,20 +11,20 @@ Tool {% endblock %} {% block content %}
     <a
       id="export-csv"
       class="button button-secondary"
-      href="{{ url_for('export_csv') }}"
+      href="{{ url_for('imports.export_csv') }}"
     >
       Export CSV
     </a>
 
-    <a class="button button-secondary" href="{{ url_for('import_csv') }}">
+    <a class="button button-secondary" href="{{ url_for('imports.import_csv') }}">
       Import CSV
     </a>
 
-    <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
+    <a class="button button-secondary" href="{{ url_for('imports.import_youtube') }}">
       Import YouTube
     </a>
 
-    <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
+    <a class="button" href="{{ url_for('posts.add_post') }}"> Add Post </a>
   </div>
 </section>
 
@@ -139,8 +139,8 @@ Tool {% endblock %} {% block content %}
 <section
   id="analytics-dashboard"
   class="analytics-section"
-  data-api-url="{{ url_for('analytics_api') }}"
-  data-export-url="{{ url_for('export_csv') }}"
+  data-api-url="{{ url_for('api.analytics_api') }}"
+  data-export-url="{{ url_for('imports.export_csv') }}"
 >
   <div class="analytics-heading">
     <div>
@@ -318,7 +318,7 @@ Tool {% endblock %} {% block content %}
               <a
                 class="table-action"
                 href="{{ url_for(
-                          'post_detail',
+                          'main.post_detail',
                           post_id=post.id
                         ) }}"
               >
@@ -329,7 +329,7 @@ Tool {% endblock %} {% block content %}
               <a
                 class="table-action"
                 href="{{ url_for(
-                          'edit_post',
+                          'posts.edit_post',
                           post_id=post.id
                         ) }}"
               >
@@ -340,7 +340,7 @@ Tool {% endblock %} {% block content %}
                 class="delete-form"
                 method="POST"
                 action="{{ url_for(
-                          'delete_post',
+                          'posts.delete_post',
                           post_id=post.id
                         ) }}"
                 data-post-title="{{ post.caption }}"
@@ -378,13 +378,13 @@ Tool {% endblock %} {% block content %}
     <p>Add a post manually, import a CSV, or connect a YouTube channel.</p>
 
     <div class="empty-actions">
-      <a class="button" href="{{ url_for('add_post') }}"> Add Post </a>
+      <a class="button" href="{{ url_for('posts.add_post') }}"> Add Post </a>
 
-      <a class="button button-secondary" href="{{ url_for('import_csv') }}">
+      <a class="button button-secondary" href="{{ url_for('imports.import_csv') }}">
         Import CSV
       </a>
 
-      <a class="button button-secondary" href="{{ url_for('import_youtube') }}">
+      <a class="button button-secondary" href="{{ url_for('imports.import_youtube') }}">
         Import YouTube
       </a>
     </div>

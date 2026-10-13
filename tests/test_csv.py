@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pytest
 
-from app import MetricSnapshot, Post
+from models import MetricSnapshot, Post
 from services.csv_service import normalize_row
 
 
