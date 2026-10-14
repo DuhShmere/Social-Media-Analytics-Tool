@@ -286,3 +286,19 @@ def test_wide_tables_can_be_scrolled_with_the_keyboard(client, app):
         assert 'tabindex="0"' in container
         assert 'role="region"' in container
         assert f'aria-label="{label}"' in container
+
+
+def test_growth_numbers_use_thousands_separators(client, app):
+    with app.app_context():
+        post = add_post(views=449678, likes=25716, comments=311, shares=0, saves=0)
+        post.metric_snapshots[0].captured_at = datetime(2026, 9, 23, 17, 50)
+        post.views, post.likes, post.comments = 2629233, 33739, 1527
+        record_metric_snapshot(post, captured_at=datetime(2026, 9, 23, 17, 53))
+        db.session.commit()
+        post_id = post.id
+
+    html = client.get(f"/posts/{post_id}").get_data(as_text=True)
+
+    assert "+2,179,555" in html
+    assert "+484.69%" in html
+    assert "+2179555" not in html

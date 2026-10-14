@@ -104,6 +104,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const formatNumber = new Intl.NumberFormat("en-US");
 
+  const formatCompactNumber = new Intl.NumberFormat("en-US", {
+    notation: "compact",
+  });
+
   let viewsChart = null;
   let engagementChart = null;
   let interactionsChart = null;
@@ -406,8 +410,12 @@ document.addEventListener("DOMContentLoaded", () => {
             },
 
             ticks: {
+              // "20M" instead of "20,000,000" when space is tight,
+              // so neighboring tick labels do not overlap.
               callback(value) {
-                return formatNumber.format(value);
+                return this.chart.width < 500
+                  ? formatCompactNumber.format(value)
+                  : formatNumber.format(value);
               },
             },
           },
@@ -415,6 +423,25 @@ document.addEventListener("DOMContentLoaded", () => {
           y: {
             grid: {
               display: false,
+            },
+
+            ticks: {
+              // Phones have little room for labels, so shorten them
+              // instead of letting them be clipped. The tooltip still
+              // shows the full title.
+              callback(value) {
+                const label = this.getLabelForValue(value);
+                // About one character per 18px leaves room for wide
+                // uppercase titles; desktop keeps the full 35.
+                const maxLength = Math.max(
+                  10,
+                  Math.min(35, Math.floor(this.chart.width / 18))
+                );
+
+                return label.length > maxLength
+                  ? `${label.slice(0, maxLength - 1)}…`
+                  : label;
+              },
             },
           },
         },

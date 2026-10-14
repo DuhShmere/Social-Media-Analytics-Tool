@@ -85,14 +85,14 @@
       <p class="card-label">{{ label }}</p>
 
       <p class="growth-value {% if change.difference < 0 %}negative{% endif %}">
-        {% if change.difference > 0 %}+{% endif %}{{ change.difference }}
+        {% if change.difference > 0 %}+{% endif %}{{ "{:,}".format(change.difference) }}
       </p>
 
       <p class="growth-percentage">
         {% if change.percentage is none %}
         New activity
         {% else %}
-        {% if change.percentage > 0 %}+{% endif %}{{ change.percentage }}%
+        {% if change.percentage > 0 %}+{% endif %}{{ "{:,}".format(change.percentage) }}%
         {% endif %}
       </p>
     </article>
