@@ -5,6 +5,7 @@ not when this module is imported, so load_dotenv() always runs first.
 """
 
 import os
+import secrets
 
 
 class Config:
@@ -13,16 +14,31 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024
 
+    # The session cookie holds the CSRF token. Lax keeps browsers from
+    # sending it with most cross-site requests, a second CSRF defense.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
     def __init__(self):
         self.SQLALCHEMY_DATABASE_URI = os.getenv(
             "DATABASE_URL",
             "sqlite:///tracker.db",
         )
         self.YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+        # Signs the session cookie and CSRF tokens.
+        self.SECRET_KEY = os.getenv("SECRET_KEY")
 
 
 class DevelopmentConfig(Config):
     DEBUG = True
+
+    def __init__(self):
+        super().__init__()
+
+        # A random key per run is safe for local work. Forms left open
+        # across a restart just need a page reload.
+        if not self.SECRET_KEY:
+            self.SECRET_KEY = secrets.token_hex(32)
 
 
 class ProductionConfig(Config):
@@ -38,6 +54,20 @@ class ProductionConfig(Config):
                 "DATABASE_URL must be set when APP_ENV=production."
             )
 
+        # A random fallback cannot work here: each server worker process
+        # would generate its own key and reject the others' CSRF tokens.
+        if not self.SECRET_KEY:
+            raise ValueError(
+                "SECRET_KEY must be set when APP_ENV=production."
+            )
+
+        # Send the session cookie only over HTTPS. Set
+        # SESSION_COOKIE_SECURE=false only for plain-HTTP setups such as
+        # a local container.
+        self.SESSION_COOKIE_SECURE = (
+            os.getenv("SESSION_COOKIE_SECURE", "true").lower() != "false"
+        )
+
 
 class TestingConfig(Config):
     TESTING = True
@@ -50,6 +80,11 @@ class TestingConfig(Config):
         # a fake one.
         self.SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
         self.YOUTUBE_API_KEY = None
+        self.SECRET_KEY = "test-secret-key"
+
+        # Most tests post forms directly. tests/test_csrf.py turns
+        # protection back on to check it.
+        self.WTF_CSRF_ENABLED = False
 
 
 CONFIGS = {

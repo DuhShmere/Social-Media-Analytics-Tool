@@ -47,6 +47,7 @@ Analytics Tool {% endblock %} {% block content %}
         action="{{ url_for('imports.import_youtube') }}"
         data-loading-text="Syncing…"
       >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <input
           type="hidden"
           name="channel_handle"

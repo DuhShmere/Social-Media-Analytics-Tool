@@ -8,7 +8,7 @@ from flask import Flask
 import models  # noqa: F401  Registers the models for Flask-Migrate.
 from config import get_config
 from errors import register_error_handlers
-from extensions import db, migrate
+from extensions import csrf, db, migrate
 from routes import register_blueprints
 from security import register_security_headers
 from services.youtube import ApiKeyRedactionFilter
@@ -42,6 +42,7 @@ def create_app(config_name="development"):
 
     db.init_app(app)
     migrate.init_app(app, db)
+    csrf.init_app(app)
 
     register_blueprints(app)
     register_error_handlers(app)

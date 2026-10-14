@@ -34,6 +34,7 @@ def test_testing_config_ignores_real_database_and_key(monkeypatch):
 def test_configs_read_environment_variables(monkeypatch, name, debug):
     monkeypatch.setenv("DATABASE_URL", "postgresql://user@localhost/analytics")
     monkeypatch.setenv("YOUTUBE_API_KEY", "fake-key")
+    monkeypatch.setenv("SECRET_KEY", "fake-secret")
 
     config = get_config(name)
 
@@ -41,6 +42,7 @@ def test_configs_read_environment_variables(monkeypatch, name, debug):
     assert config.TESTING is False
     assert config.SQLALCHEMY_DATABASE_URI == "postgresql://user@localhost/analytics"
     assert config.YOUTUBE_API_KEY == "fake-key"
+    assert config.SECRET_KEY == "fake-secret"
 
 
 def test_unknown_environment_is_rejected():

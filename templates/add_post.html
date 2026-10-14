@@ -14,6 +14,7 @@ Tool {% endblock %} {% block content %}
   {% endif %}
 
   <form method="POST" class="data-form" data-loading-text="Saving…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     {% include "partials/post_form_fields.html" %}
 
     <div class="form-actions">

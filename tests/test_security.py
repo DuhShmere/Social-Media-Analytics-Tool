@@ -63,6 +63,7 @@ def test_production_requires_database_url(monkeypatch):
 
 def test_production_starts_with_database_url(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://user@db/analytics")
+    monkeypatch.setenv("SECRET_KEY", "fake-secret")
 
     assert get_config("production").SQLALCHEMY_DATABASE_URI == (
         "postgresql://user@db/analytics"

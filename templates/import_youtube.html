@@ -19,6 +19,7 @@ Analytics Tool {% endblock %} {% block content %}
   {% endif %}
 
   <form method="POST" class="data-form" data-loading-text="Importing videos…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <div class="form-group">
       <label for="channel_handle"> YouTube channel handle </label>
 

@@ -1,6 +1,8 @@
-"""404, 413, and 500 handlers. /api/ routes get JSON instead of HTML."""
+"""404, 413, CSRF, and 500 handlers. /api/ routes get JSON instead of HTML."""
 
 from flask import current_app, jsonify, render_template, request
+
+from flask_wtf.csrf import CSRFError
 
 from extensions import db
 
@@ -30,6 +32,12 @@ def upload_too_large(error):
     return render_template("import_csv.html", error=message), 413
 
 
+def csrf_failed(error):
+    # Usually a page left open too long or across a server restart.
+    current_app.logger.warning("CSRF check failed: %s", error.description)
+    return render_template("errors/csrf.html"), 400
+
+
 def internal_server_error(error):
     # Flask has already logged the exception. Roll back so a failed
     # transaction is never left open on the session.
@@ -44,4 +52,5 @@ def internal_server_error(error):
 def register_error_handlers(app):
     app.register_error_handler(404, page_not_found)
     app.register_error_handler(413, upload_too_large)
+    app.register_error_handler(CSRFError, csrf_failed)
     app.register_error_handler(500, internal_server_error)

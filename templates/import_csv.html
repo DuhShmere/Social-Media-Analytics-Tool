@@ -35,6 +35,7 @@ Tool {% endblock %} {% block content %}
     enctype="multipart/form-data"
     data-loading-text="Importing…"
   >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <div class="form-group">
       <label for="csv-file"> CSV file </label>
 

@@ -360,6 +360,7 @@ Tool {% endblock %} {% block content %}
                         ) }}"
                 data-post-title="{{ post.caption }}"
               >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                 <button class="table-action delete-action" type="submit">
                   Delete<span class="visually-hidden">: {{ post.caption }}</span>
                 </button>

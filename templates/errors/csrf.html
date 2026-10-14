@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block title %} Page Expired | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<section class="empty-state">
+  <h1>This page expired</h1>
+
+  <p>
+    For your security, the form could not be submitted. Go back, reload the
+    page, and try again. Nothing was changed.
+  </p>
+
+  <div class="empty-actions">
+    <a class="button" href="{{ url_for('main.dashboard') }}">Back to Dashboard</a>
+  </div>
+</section>
+{% endblock %}
