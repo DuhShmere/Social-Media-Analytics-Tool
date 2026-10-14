@@ -1,0 +1,16 @@
+# Secrets and local state never go into the image.
+.env
+instance/
+*.db
+
+# Local tooling and caches.
+venv/
+.git/
+.github/
+.pytest_cache/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Not needed at runtime.
+tests/

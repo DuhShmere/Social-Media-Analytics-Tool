@@ -31,3 +31,57 @@ jobs:
         env:
           DATABASE_URL: "sqlite:///:memory:"
         run: python -m pytest -v
+
+  docker:
+    # Builds the production image and checks the running container.
+    needs: test
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t social-analytics .
+
+      - name: Start container
+        run: |
+          docker run -d --name app -p 8000:8000 \
+            -e SECRET_KEY=ci-only-secret \
+            -e DATABASE_URL=sqlite:////app/instance/tracker.db \
+            -e SESSION_COOKIE_SECURE=false \
+            social-analytics
+
+      - name: Wait for the health check
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The app never became healthy."
+          exit 1
+
+      - name: Check pages, headers, and user
+        run: |
+          curl -fsS -o /dev/null http://127.0.0.1:8000/
+          curl -fsSI http://127.0.0.1:8000/ | grep -i "^content-security-policy:"
+          curl -fsSI http://127.0.0.1:8000/ | grep -i "^x-request-id:"
+          test "$(docker exec app id -u)" != "0"
+
+      - name: Wait for Docker to report healthy
+        run: |
+          for attempt in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' app)
+            echo "Container health: $status"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 1
+
+      - name: Show container logs
+        if: always()
+        run: docker logs app
