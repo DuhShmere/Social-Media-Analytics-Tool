@@ -41,7 +41,10 @@ Tool {% endblock %} {% block content %}
         required
       />
 
-      <small> Maximum file size: 2 MB. </small>
+      <small>
+        Maximum file size:
+        {{ config.MAX_CONTENT_LENGTH // (1024 * 1024) }} MB.
+      </small>
     </div>
 
     <div class="csv-information">

@@ -288,7 +288,9 @@ Tool {% endblock %} {% block content %}
 
           <td>
             {% if post.social_account %} {{ post.social_account.account_name }}
-            {% else %} Manual {% endif %}
+            {% else %}
+            <span class="muted-text">Not linked</span>
+            {% endif %}
           </td>
 
           <td>
@@ -392,7 +394,7 @@ Tool {% endblock %} {% block content %}
   {% endif %}
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include "partials/chartjs.html" %}
 
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

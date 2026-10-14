@@ -1,6 +1,6 @@
-"""404 and 500 handlers. /api/ routes get JSON instead of HTML."""
+"""404, 413, and 500 handlers. /api/ routes get JSON instead of HTML."""
 
-from flask import jsonify, render_template, request
+from flask import current_app, jsonify, render_template, request
 
 from extensions import db
 
@@ -16,6 +16,20 @@ def page_not_found(error):
     return render_template("errors/404.html"), 404
 
 
+def upload_too_large(error):
+    limit_mb = current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+    message = (
+        f"The file is too large. The maximum upload size is {limit_mb} MB."
+    )
+
+    if wants_json_response():
+        return jsonify({"error": message}), 413
+
+    # The CSV import is the only form that accepts files, so show the
+    # message there and let the user choose a smaller file.
+    return render_template("import_csv.html", error=message), 413
+
+
 def internal_server_error(error):
     # Flask has already logged the exception. Roll back so a failed
     # transaction is never left open on the session.
@@ -29,4 +43,5 @@ def internal_server_error(error):
 
 def register_error_handlers(app):
     app.register_error_handler(404, page_not_found)
+    app.register_error_handler(413, upload_too_large)
     app.register_error_handler(500, internal_server_error)

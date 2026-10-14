@@ -645,6 +645,15 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      // Chart.js comes from a CDN. If it was blocked or failed its
+      // integrity check, keep the summary and table usable.
+      if (typeof Chart === "undefined") {
+        statusElement.textContent =
+          "Charts could not be loaded. The summary and posts table " +
+          "below are still up to date.";
+        return;
+      }
+
       createViewsChart(data);
       createEngagementChart(data);
       createInteractionsChart(data);

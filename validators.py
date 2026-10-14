@@ -10,6 +10,11 @@ from urllib.parse import urlsplit
 
 METRIC_FIELDS = ("views", "likes", "comments", "shares", "saves")
 
+# Suggested choices for the add/edit form. Posts imported from CSV can
+# hold other values, so the form always includes the post's own value.
+PLATFORM_CHOICES = ("Instagram", "TikTok", "YouTube", "LinkedIn", "X")
+CONTENT_TYPE_CHOICES = ("Video", "Short", "Reel", "Image", "Carousel", "Text")
+
 
 def is_safe_external_url(value):
     if not value:

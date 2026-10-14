@@ -94,6 +94,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    // Chart.js comes from a CDN. If it was blocked or failed its
+    // integrity check, point to the snapshot table instead.
+    if (typeof Chart === "undefined") {
+      statusElement.textContent =
+        "Charts could not be loaded. The snapshot history table " +
+        "below still shows every measurement.";
+      return;
+    }
+
     const labels = snapshots.map((snapshot) => snapshot.label);
 
     createLineChart(

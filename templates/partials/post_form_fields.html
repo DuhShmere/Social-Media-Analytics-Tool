@@ -1,0 +1,82 @@
+{#- Fields shared by the add and edit post forms.
+    Expects: values (dict of strings), platform_choices, content_type_choices. -#}
+<div class="form-group">
+  <label for="platform">Platform</label>
+
+  <select id="platform" name="platform" required>
+    <option value="" {% if not values.platform %}selected{% endif %}>
+      Choose a platform
+    </option>
+
+    {% for platform in platform_choices %}
+    <option
+      value="{{ platform }}"
+      {% if values.platform == platform %}selected{% endif %}
+    >
+      {{ platform }}
+    </option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="form-group">
+  <label for="caption">Caption or title</label>
+
+  <input
+    id="caption"
+    name="caption"
+    type="text"
+    maxlength="300"
+    placeholder="Enter the post caption or title"
+    value="{{ values.caption }}"
+    required
+  />
+</div>
+
+<div class="form-group">
+  <label for="content_type">Content type</label>
+
+  <select id="content_type" name="content_type" required>
+    <option value="" {% if not values.content_type %}selected{% endif %}>
+      Choose a content type
+    </option>
+
+    {% for content_type in content_type_choices %}
+    <option
+      value="{{ content_type }}"
+      {% if values.content_type == content_type %}selected{% endif %}
+    >
+      {{ content_type }}
+    </option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="form-group">
+  <label for="posted_at">Date and time posted</label>
+
+  <input
+    id="posted_at"
+    name="posted_at"
+    type="datetime-local"
+    value="{{ values.posted_at }}"
+    required
+  />
+</div>
+
+<div class="metrics-grid">
+  {% for field in ["views", "likes", "comments", "shares", "saves"] %}
+  <div class="form-group">
+    <label for="{{ field }}">{{ field | capitalize }}</label>
+
+    <input
+      id="{{ field }}"
+      name="{{ field }}"
+      type="number"
+      min="0"
+      step="1"
+      value="{{ values[field] }}"
+    />
+  </div>
+  {% endfor %}
+</div>

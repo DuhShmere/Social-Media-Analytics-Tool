@@ -396,8 +396,13 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .heading-actions {
+    flex-wrap: wrap;
+  }
+
+  /* Two buttons per row, so four header buttons never overflow. */
   .heading-actions .button {
-    flex: 1;
+    flex: 1 1 calc(50% - 6px);
   }
 
   .form-actions {
@@ -410,13 +415,68 @@ select:focus {
   }
 }
 
+.muted-text {
+  color: var(--muted);
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
 .account-card {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 3px 12px rgba(17, 24, 39, 0.04);
+}
+
+.account-card-header {
+  margin-bottom: 12px;
+}
+
+.account-platform {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-card h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  overflow-wrap: anywhere;
 }
 
 .account-handle {
+  margin: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.account-details {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.account-details dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.account-details dd {
+  margin: 2px 0 0;
+  font-weight: 650;
 }
 
 .account-actions {
