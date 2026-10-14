@@ -161,7 +161,8 @@ def test_oversized_upload_shows_friendly_message(client, app):
 
     assert response.status_code == 413
     assert b"The maximum upload size is 2 MB." in response.data
-    assert b'<form class="data-form"' in response.data
+    # The upload form is shown again so a smaller file can be chosen.
+    assert b'name="csv_file"' in response.data
 
 
 def test_posts_without_account_are_not_labeled_manual(client, app):
@@ -209,3 +210,79 @@ def test_chart_pages_load_pinned_chartjs_with_integrity(client, app):
         assert 'integrity="sha384-' in html
         assert 'crossorigin="anonymous"' in html
         assert 'src="https://cdn.jsdelivr.net/npm/chart.js"' not in html
+
+
+# ---------------------------------------------------------
+# Loading states, images, and wide tables
+# ---------------------------------------------------------
+
+def test_slow_or_duplicate_prone_forms_opt_into_loading_state(client, app):
+    with app.app_context():
+        post_id = add_post().id
+        db.session.add(
+            SocialAccount(
+                platform="YouTube",
+                account_name="Example Channel",
+                account_handle="@example",
+                external_account_id="UC-example",
+            )
+        )
+        db.session.commit()
+
+    expected = {
+        "/add-post": "Saving…",
+        f"/posts/{post_id}/edit": "Saving…",
+        "/import-csv": "Importing…",
+        "/import-youtube": "Importing videos…",
+        "/accounts": "Syncing…",
+    }
+
+    for path, loading_text in expected.items():
+        html = client.get(path).get_data(as_text=True)
+
+        assert f'data-loading-text="{loading_text}"' in html, path
+        assert "js/forms.js" in html, path
+
+
+def test_thumbnails_lazy_load_with_reserved_space(client, app):
+    with app.app_context():
+        add_post(
+            source="youtube_api",
+            external_id="vid-1",
+            thumbnail_url="https://i.ytimg.com/vi/vid-1/hqdefault.jpg",
+        )
+
+    html = client.get("/").get_data(as_text=True)
+    image = re.search(r'<img\s+class="post-thumbnail".*?/>', html, re.S).group(0)
+
+    assert 'loading="lazy"' in image
+    assert 'width="76"' in image
+    assert 'height="44"' in image
+
+
+def test_truncated_captions_show_full_text_on_hover(client, app):
+    long_caption = "A very long caption " * 10
+
+    with app.app_context():
+        add_post(caption=long_caption.strip())
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert f'title="{long_caption.strip()}"' in html
+
+
+def test_wide_tables_can_be_scrolled_with_the_keyboard(client, app):
+    with app.app_context():
+        post_id = add_post().id
+
+    for path, label in (("/", "Posts table"), (f"/posts/{post_id}", "Snapshot history table")):
+        html = client.get(path).get_data(as_text=True)
+        container = re.search(
+            r'<div\s+class="table-container"[^>]*>',
+            html,
+            re.S,
+        ).group(0)
+
+        assert 'tabindex="0"' in container
+        assert 'role="region"' in container
+        assert f'aria-label="{label}"' in container

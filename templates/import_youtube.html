@@ -18,7 +18,7 @@ Analytics Tool {% endblock %} {% block content %}
   <div class="message success-message" role="status">{{ success }}</div>
   {% endif %}
 
-  <form method="POST" class="data-form">
+  <form method="POST" class="data-form" data-loading-text="Importing videos…">
     <div class="form-group">
       <label for="channel_handle"> YouTube channel handle </label>
 

@@ -225,7 +225,12 @@ Tool {% endblock %} {% block content %}
   </div>
 
   {% if posts %}
-  <div class="table-container">
+  <div
+    class="table-container"
+    tabindex="0"
+    role="region"
+    aria-label="Posts table"
+  >
     <table>
       <thead>
         <tr>
@@ -262,6 +267,10 @@ Tool {% endblock %} {% block content %}
                 class="post-thumbnail"
                 src="{{ post.thumbnail_url }}"
                 alt=""
+                width="76"
+                height="44"
+                loading="lazy"
+                decoding="async"
               />
               {% endif %}
 
@@ -269,6 +278,7 @@ Tool {% endblock %} {% block content %}
                 {% if post.safe_external_url %}
                 <a
                   class="post-title"
+                  title="{{ post.caption }}"
                   href="{{ post.safe_external_url }}"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -277,7 +287,9 @@ Tool {% endblock %} {% block content %}
                   <span class="visually-hidden"> (opens in a new tab)</span>
                 </a>
                 {% else %}
-                <span class="post-title"> {{ post.caption }} </span>
+                <span class="post-title" title="{{ post.caption }}">
+                  {{ post.caption }}
+                </span>
                 {% endif %}
 
                 <span class="post-type"> {{ post.content_type }} </span>

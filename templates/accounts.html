@@ -42,7 +42,11 @@ Analytics Tool {% endblock %} {% block content %}
 
     <div class="account-actions">
       {% if ( account.platform == "YouTube" and account.account_handle ) %}
-      <form method="POST" action="{{ url_for('imports.import_youtube') }}">
+      <form
+        method="POST"
+        action="{{ url_for('imports.import_youtube') }}"
+        data-loading-text="Syncing…"
+      >
         <input
           type="hidden"
           name="channel_handle"

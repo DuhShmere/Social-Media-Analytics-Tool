@@ -13,7 +13,7 @@ Tool {% endblock %} {% block content %}
   <div class="message error-message" role="alert">{{ error }}</div>
   {% endif %}
 
-  <form method="POST" class="data-form">
+  <form method="POST" class="data-form" data-loading-text="Saving…">
     {% include "partials/post_form_fields.html" %}
 
     <div class="form-actions">

@@ -29,7 +29,12 @@ Tool {% endblock %} {% block content %}
   </div>
   {% endif %} {% endif %}
 
-  <form class="data-form" method="POST" enctype="multipart/form-data">
+  <form
+    class="data-form"
+    method="POST"
+    enctype="multipart/form-data"
+    data-loading-text="Importing…"
+  >
     <div class="form-group">
       <label for="csv-file"> CSV file </label>
 
