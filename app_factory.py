@@ -10,6 +10,7 @@ from config import get_config
 from errors import register_error_handlers
 from extensions import db, migrate
 from routes import register_blueprints
+from security import register_security_headers
 from services.youtube import ApiKeyRedactionFilter
 
 
@@ -44,5 +45,6 @@ def create_app(config_name="development"):
 
     register_blueprints(app)
     register_error_handlers(app)
+    register_security_headers(app)
 
     return app

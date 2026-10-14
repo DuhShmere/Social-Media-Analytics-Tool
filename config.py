@@ -28,6 +28,16 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
 
+    def __init__(self):
+        super().__init__()
+
+        # Fail at startup instead of silently writing to a local SQLite
+        # file that a container would lose on restart.
+        if not os.getenv("DATABASE_URL"):
+            raise ValueError(
+                "DATABASE_URL must be set when APP_ENV=production."
+            )
+
 
 class TestingConfig(Config):
     TESTING = True
