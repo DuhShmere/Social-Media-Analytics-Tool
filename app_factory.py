@@ -9,6 +9,7 @@ import models  # noqa: F401  Registers the models for Flask-Migrate.
 from config import get_config
 from errors import register_error_handlers
 from extensions import csrf, db, migrate
+from logging_config import configure_logging, register_request_logging
 from routes import register_blueprints
 from security import register_security_headers
 from services.youtube import ApiKeyRedactionFilter
@@ -20,6 +21,10 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 def create_app(config_name="development"):
     if config_name != "testing":
         load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+    # Before app.logger is first used, so Flask does not add its own
+    # handler and every line is printed once.
+    configure_logging(config_name)
 
     # The paths are explicit so the app can have a readable logger name
     # without Flask guessing its folders. instance_path matters most:
@@ -39,6 +44,10 @@ def create_app(config_name="development"):
         for log_filter in app.logger.filters
     ):
         app.logger.addFilter(ApiKeyRedactionFilter())
+
+    # First, so every request has an ID and start time before any other
+    # hook (such as the CSRF check) can reject it.
+    register_request_logging(app)
 
     db.init_app(app)
     migrate.init_app(app, db)
