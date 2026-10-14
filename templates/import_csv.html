@@ -10,9 +10,9 @@ Tool {% endblock %} {% block content %}
   </div>
 
   {% if error %}
-  <div class="message error-message">{{ error }}</div>
+  <div class="message error-message" role="alert">{{ error }}</div>
   {% endif %} {% if result %}
-  <div class="message success-message">
+  <div class="message success-message" role="status">
     Imported {{ result.imported }} posts. Skipped {{ result.skipped }}
     duplicates. Found {{ result.invalid }} invalid rows.
   </div>

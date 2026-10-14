@@ -274,6 +274,7 @@ Tool {% endblock %} {% block content %}
                   rel="noopener noreferrer"
                 >
                   {{ post.caption }}
+                  <span class="visually-hidden"> (opens in a new tab)</span>
                 </a>
                 {% else %}
                 <span class="post-title"> {{ post.caption }} </span>
@@ -324,7 +325,7 @@ Tool {% endblock %} {% block content %}
                           post_id=post.id
                         ) }}"
               >
-                Analytics
+                Analytics<span class="visually-hidden">: {{ post.caption }}</span>
               </a>
 
               {% if post.is_editable %}
@@ -335,7 +336,7 @@ Tool {% endblock %} {% block content %}
                           post_id=post.id
                         ) }}"
               >
-                Edit
+                Edit<span class="visually-hidden">: {{ post.caption }}</span>
               </a>
 
               <form
@@ -348,7 +349,7 @@ Tool {% endblock %} {% block content %}
                 data-post-title="{{ post.caption }}"
               >
                 <button class="table-action delete-action" type="submit">
-                  Delete
+                  Delete<span class="visually-hidden">: {{ post.caption }}</span>
                 </button>
               </form>
               {% elif post.safe_external_url %}
@@ -358,7 +359,7 @@ Tool {% endblock %} {% block content %}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                View
+                View<span class="visually-hidden">: {{ post.caption }}</span><span class="visually-hidden"> (opens in a new tab)</span>
               </a>
               {% endif %}
             </div>

@@ -10,7 +10,7 @@ Tool {% endblock %} {% block content %}
   </div>
 
   {% if error %}
-  <div class="message error-message">{{ error }}</div>
+  <div class="message error-message" role="alert">{{ error }}</div>
   {% endif %}
 
   <form method="POST" class="data-form">

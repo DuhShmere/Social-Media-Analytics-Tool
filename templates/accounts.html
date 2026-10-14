@@ -49,7 +49,9 @@ Analytics Tool {% endblock %} {% block content %}
           value="{{ account.account_handle }}"
         />
 
-        <button class="button" type="submit">Sync Now</button>
+        <button class="button" type="submit">
+          Sync Now<span class="visually-hidden">: {{ account.account_name }}</span>
+        </button>
       </form>
       {% endif %}
     </div>

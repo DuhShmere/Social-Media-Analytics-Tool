@@ -14,26 +14,35 @@
   </head>
 
   <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <header class="site-header">
-      <nav class="navigation">
+      <nav class="navigation" aria-label="Main">
         <a class="brand" href="{{ url_for('main.dashboard') }}">
           Social Analytics
         </a>
 
         <div class="nav-links">
-          <a href="{{ url_for('main.dashboard') }}"> Dashboard </a>
-
-          <a href="{{ url_for('main.accounts') }}"> Accounts </a>
-
-          <a href="{{ url_for('posts.add_post') }}"> Add Post </a>
-
-          <a href="{{ url_for('imports.import_youtube') }}"> Import YouTube </a>
-
-          <a href="{{ url_for('imports.import_csv') }}"> Import CSV </a>
+          {% for endpoint, label in [
+            ("main.dashboard", "Dashboard"),
+            ("main.accounts", "Accounts"),
+            ("posts.add_post", "Add Post"),
+            ("imports.import_youtube", "Import YouTube"),
+            ("imports.import_csv", "Import CSV"),
+          ] %}
+          <a
+            href="{{ url_for(endpoint) }}"
+            {% if request.endpoint == endpoint %}aria-current="page"{% endif %}
+          >
+            {{ label }}
+          </a>
+          {% endfor %}
         </div>
       </nav>
     </header>
 
-    <main class="page-container">{% block content %}{% endblock %}</main>
+    <main id="main-content" class="page-container" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
   </body>
 </html>

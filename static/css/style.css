@@ -5,6 +5,7 @@
   --surface: #ffffff;
   --text: #111827;
   --muted: #6b7280;
+  --muted-strong: #4b5563;
   --border: #e5e7eb;
   --success-background: #f0fdf4;
   --success-border: #bbf7d0;
@@ -12,6 +13,11 @@
   --error-background: #fef2f2;
   --error-border: #fecaca;
   --error-text: #991b1b;
+
+  /* Accessibility tokens. tests/test_accessibility.py checks their
+     contrast ratios against WCAG 2.2 AA. */
+  --input-border: #878e99;
+  --focus-ring: var(--primary);
 }
 
 * {
@@ -63,8 +69,59 @@ body {
   text-decoration: none;
 }
 
-.nav-links a:hover {
+.nav-links a:hover,
+.nav-links a[aria-current="page"] {
   color: var(--primary);
+}
+
+.nav-links a[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+/* Hidden visually but still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 650;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* A clearly visible ring for keyboard users on every interactive
+   element. :focus-visible skips it for mouse clicks on buttons. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The skip link moves focus to <main>; no ring around the whole page. */
+#main-content:focus,
+#main-content:focus-visible {
+  outline: none;
 }
 
 .page-container {
@@ -310,7 +367,7 @@ input,
 select {
   width: 100%;
   padding: 11px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--input-border);
   border-radius: 7px;
   background: #ffffff;
   color: var(--text);
@@ -320,7 +377,6 @@ select {
 input:focus,
 select:focus {
   border-color: var(--primary);
-  outline: 3px solid rgba(79, 70, 229, 0.12);
 }
 
 .metrics-grid {
@@ -721,7 +777,7 @@ select:focus {
 
 .recommendation-description {
   margin: 0;
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 .recommendation-rate {
@@ -737,7 +793,7 @@ select:focus {
 }
 
 .recommendation-rate small {
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 @media (max-width: 650px) {
