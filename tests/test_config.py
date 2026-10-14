@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 import app_factory
 from app_factory import create_app
@@ -79,3 +80,29 @@ def test_api_key_filter_is_added_only_once():
     ]
 
     assert len(filters) == 1
+
+
+# ---------------------------------------------------------
+# Health check
+# ---------------------------------------------------------
+
+def test_health_check_reports_ok(client):
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "ok", "database": "ok"}
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_health_check_reports_database_outage(client, monkeypatch, caplog):
+    def broken_execute(*args, **kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(db.session, "execute", broken_execute)
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.get_json() == {"status": "error", "database": "unavailable"}
+    assert "connection refused" not in response.get_data(as_text=True)
+    assert "database unavailable" in caplog.text
