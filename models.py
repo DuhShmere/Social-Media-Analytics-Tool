@@ -32,6 +32,11 @@ class SocialAccount(db.Model):
     )
     last_synced_at = db.Column(db.DateTime)
 
+    # OAuth access token for platforms that need one (Instagram),
+    # encrypted with token_vault.encrypt_token(). Never stored in plain text.
+    encrypted_access_token = db.Column(db.Text)
+    access_token_expires_at = db.Column(db.DateTime)
+
     posts = db.relationship(
         "Post",
         back_populates="social_account",

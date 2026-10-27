@@ -28,6 +28,13 @@ class Config:
         # Signs the session cookie and CSRF tokens.
         self.SECRET_KEY = os.getenv("SECRET_KEY")
 
+        # Instagram API with Instagram Login (a Meta developer app).
+        self.INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID")
+        self.INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET")
+        self.INSTAGRAM_REDIRECT_URI = os.getenv("INSTAGRAM_REDIRECT_URI")
+        # Encrypts stored OAuth access tokens. See token_vault.py.
+        self.TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY")
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
@@ -81,6 +88,10 @@ class TestingConfig(Config):
         self.SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
         self.YOUTUBE_API_KEY = None
         self.SECRET_KEY = "test-secret-key"
+        self.INSTAGRAM_APP_ID = None
+        self.INSTAGRAM_APP_SECRET = None
+        self.INSTAGRAM_REDIRECT_URI = None
+        self.TOKEN_ENCRYPTION_KEY = None
 
         # Most tests post forms directly. tests/test_csrf.py turns
         # protection back on to check it.

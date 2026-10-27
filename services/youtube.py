@@ -7,7 +7,6 @@ finish before anything is written, so a failed request never leaves
 partial data behind.
 """
 
-import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,6 +16,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from models import Post, SocialAccount, record_metric_snapshot
+from redaction import SecretRedactionFilter, redact_secrets
 
 
 PLATFORM = "YouTube"
@@ -35,43 +35,9 @@ CHANNEL_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-API_KEY_PATTERN = re.compile(r"([?&]key=)[^&\s'\"]+")
-
-
-def redact_api_key(text):
-    return API_KEY_PATTERN.sub(r"\1REDACTED", text)
-
-
-class ApiKeyRedactionFilter(logging.Filter):
-    """Remove API keys from log messages and tracebacks.
-
-    The Google client puts the full request URL, which contains the
-    API key, in retry warnings and in HttpError messages.
-    """
-
-    def filter(self, record):
-        record.msg = redact_api_key(record.getMessage())
-        record.args = None
-
-        if record.exc_info and not record.exc_text:
-            record.exc_text = logging.Formatter().formatException(
-                record.exc_info
-            )
-
-        if record.exc_text:
-            record.exc_text = redact_api_key(record.exc_text)
-
-        return True
-
-
-# Logger filters only apply to records created by that exact logger,
-# so each Google client logger that can log a URL gets the filter.
-for logger_name in (
-    "googleapiclient.discovery",
-    "googleapiclient.http",
-    "googleapiclient.model",
-):
-    logging.getLogger(logger_name).addFilter(ApiKeyRedactionFilter())
+# Older names, kept so existing imports keep working.
+ApiKeyRedactionFilter = SecretRedactionFilter
+redact_api_key = redact_secrets
 
 
 class YouTubeError(Exception):
