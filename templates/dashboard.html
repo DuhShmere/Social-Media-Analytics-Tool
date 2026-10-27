@@ -310,6 +310,9 @@ Tool {% endblock %} {% block content %}
             {% if post.source == "youtube_api" %}
             <span class="badge badge-api"> YouTube API </span>
 
+            {% elif post.source == "instagram_api" %}
+            <span class="badge badge-instagram"> Instagram API </span>
+
             {% elif post.source == "csv_import" %}
             <span class="badge badge-csv"> CSV </span>
 

@@ -16,7 +16,9 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "default-src 'self'",
         "script-src 'self' https://cdn.jsdelivr.net",
         "style-src 'self'",
-        "img-src 'self' https://i.ytimg.com data:",
+        # YouTube thumbnails and Instagram's image CDNs.
+        "img-src 'self' https://i.ytimg.com https://*.cdninstagram.com "
+        "https://*.fbcdn.net data:",
         "connect-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",

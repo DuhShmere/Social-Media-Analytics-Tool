@@ -47,6 +47,15 @@
     </header>
 
     <main id="main-content" class="page-container" tabindex="-1">
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div
+        class="message {{ 'error-message' if category == 'error' else 'success-message' }}"
+        role="{{ 'alert' if category == 'error' else 'status' }}"
+      >
+        {{ message }}
+      </div>
+      {% endfor %}
+
       {% block content %}{% endblock %}
     </main>
   </body>

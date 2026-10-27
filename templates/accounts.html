@@ -7,7 +7,15 @@ Analytics Tool {% endblock %} {% block content %}
     <p>View and synchronize your connected social-media accounts.</p>
   </div>
 
-  <a class="button" href="{{ url_for('imports.import_youtube') }}"> Import YouTube </a>
+  <div class="heading-actions">
+    <a class="button button-secondary" href="{{ url_for('imports.import_youtube') }}">
+      Import YouTube
+    </a>
+
+    <a class="button" href="{{ url_for('instagram.connect') }}">
+      Connect Instagram
+    </a>
+  </div>
 </section>
 
 {% if social_accounts %}
@@ -15,7 +23,9 @@ Analytics Tool {% endblock %} {% block content %}
   {% for account in social_accounts %}
   <article class="account-card">
     <div class="account-card-header">
-      <span class="account-platform"> {{ account.platform }} </span>
+      <span class="account-platform account-platform-{{ account.platform | lower }}">
+        {{ account.platform }}
+      </span>
     </div>
 
     <h2>{{ account.account_name }}</h2>
@@ -58,6 +68,36 @@ Analytics Tool {% endblock %} {% block content %}
           Sync Now<span class="visually-hidden">: {{ account.account_name }}</span>
         </button>
       </form>
+      {% elif account.platform == "Instagram" and account.encrypted_access_token %}
+      <form
+        method="POST"
+        action="{{ url_for('instagram.sync', account_id=account.id) }}"
+        data-loading-text="Syncing…"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <button class="button" type="submit">
+          Sync Now<span class="visually-hidden">: {{ account.account_name }}</span>
+        </button>
+      </form>
+
+      <form
+        method="POST"
+        action="{{ url_for('instagram.disconnect', account_id=account.id) }}"
+        data-loading-text="Disconnecting…"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <button class="button button-secondary" type="submit">
+          Disconnect<span class="visually-hidden">: {{ account.account_name }}</span>
+        </button>
+      </form>
+      {% elif account.platform == "Instagram" %}
+      <p class="muted-text">Not connected. Imported posts are kept.</p>
+
+      <a class="button" href="{{ url_for('instagram.connect') }}">
+        Reconnect<span class="visually-hidden">: {{ account.account_name }}</span>
+      </a>
       {% endif %}
     </div>
   </article>
@@ -68,8 +108,14 @@ Analytics Tool {% endblock %} {% block content %}
 <div class="empty-state">
   <h2>No connected accounts</h2>
 
-  <p>Import a YouTube channel to create your first account.</p>
+  <p>Import a YouTube channel or connect Instagram to add your first account.</p>
 
-  <a class="button" href="{{ url_for('imports.import_youtube') }}"> Import YouTube </a>
+  <div class="empty-actions">
+    <a class="button" href="{{ url_for('imports.import_youtube') }}">Import YouTube</a>
+
+    <a class="button button-secondary" href="{{ url_for('instagram.connect') }}">
+      Connect Instagram
+    </a>
+  </div>
 </div>
 {% endif %} {% endblock %}

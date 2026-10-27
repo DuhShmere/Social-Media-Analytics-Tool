@@ -99,6 +99,7 @@ class InstagramPost:
 
 @dataclass(frozen=True)
 class InstagramSyncResult:
+    account: SocialAccount
     account_name: str
     imported: int
     updated: int
@@ -489,6 +490,7 @@ def sync_instagram_account(client, session, synced_at, account=None):
         record_metric_snapshot(post, captured_at=synced_at)
 
     return InstagramSyncResult(
+        account=account,
         account_name=profile.username,
         imported=imported,
         updated=updated,
