@@ -2,7 +2,7 @@
 
 [![Run Python Tests](https://github.com/DuhShmere/Social-Media-Analytics-Tool/actions/workflows/tests.yml/badge.svg)](https://github.com/DuhShmere/Social-Media-Analytics-Tool/actions/workflows/tests.yml)
 
-A Flask web application that tracks social-media post performance over time. It imports posts from the YouTube Data API, the Instagram API, CSV files, or manual entry, records every measurement as a historical snapshot, and turns them into engagement metrics, growth trends, and a recommended posting window.
+A Flask web application that tracks social-media post performance over time. It imports posts from the YouTube Data API, the Instagram API, the TikTok API, CSV files, or manual entry, records every measurement as a historical snapshot, and turns them into engagement metrics, growth trends, and a recommended posting window.
 
 ![Analytics dashboard](docs/screenshots/dashboard.png)
 
@@ -10,6 +10,7 @@ A Flask web application that tracks social-media post performance over time. It 
 
 - **YouTube sync:** import a channel by handle or link, then re-sync to update metrics. Each sync records a new snapshot, so growth can be measured.
 - **Instagram sync:** connect an Instagram professional account through Instagram's own login (OAuth), then sync views, likes, comments, shares, and saves. Access tokens are encrypted and renewed automatically.
+- **TikTok sync:** connect a TikTok account through TikTok's login (OAuth), then sync views, likes, comments, and shares for recent public videos. The 24-hour access token is refreshed automatically, and disconnecting revokes access on TikTok's side.
 - **CSV import and export:** row-by-row validation with clear errors, duplicate detection, a downloadable sample file, and formula-safe exports.
 - **Manual posts:** add, edit, and delete posts that did not come from YouTube.
 - **Analytics dashboard:** filter by account, platform, content type, date range, and text; see totals, engagement rate, top posts, engagement over time, and interaction breakdown.
@@ -25,15 +26,16 @@ A Flask web application that tracks social-media post performance over time. It 
 
 **Backend:** Python 3.12, Flask, Flask-SQLAlchemy, Flask-Migrate (Alembic), Flask-WTF, SQLite
 **Frontend:** Jinja templates, HTML, CSS, vanilla JavaScript, Chart.js
-**Integrations:** YouTube Data API v3 (google-api-python-client), Instagram API with Instagram Login (OAuth 2.0, requests), Fernet token encryption (cryptography)
-**Quality and delivery:** pytest (240 tests), GitHub Actions, Docker, gunicorn
+**Integrations:** YouTube Data API v3 (google-api-python-client), Instagram API with Instagram Login and TikTok Login Kit and Display API (OAuth 2.0, requests), Fernet token encryption (cryptography)
+**Quality and delivery:** pytest (294 tests), GitHub Actions, Docker, gunicorn
 
 ## Architecture
 
 ```
 Browser ──> routes/ (Flask blueprints) ──> services/ ──> models.py ──> SQLite
                                                ├──> YouTube Data API
-                                               └──> Instagram API (OAuth)
+                                               ├──> Instagram API (OAuth)
+                                               └──> TikTok API (OAuth)
 ```
 
 - **`routes/`** holds thin request handlers, one blueprint per feature area.
@@ -47,8 +49,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for diagrams, the data flows, d
 
 | Table | Purpose |
 |---|---|
-| `social_account` | A connected channel or account. Unique on `(platform, external_account_id)`. Instagram accounts also store an encrypted access token and its expiry. |
-| `post` | A post's current metrics and its `source` (`manual`, `csv_import`, `youtube_api`, or `instagram_api`). Unique on `(platform, external_id)`, which makes re-syncs and re-imports update instead of duplicate. |
+| `social_account` | A connected channel or account. Unique on `(platform, external_account_id)`. Instagram and TikTok accounts also store encrypted OAuth tokens and their expiry; TikTok adds a refresh token. |
+| `post` | A post's current metrics and its `source` (`manual`, `csv_import`, `youtube_api`, `instagram_api`, or `tiktok_api`). Unique on `(platform, external_id)`, which makes re-syncs and re-imports update instead of duplicate. |
 | `metric_snapshot` | One row per measurement, deleted with its post. Growth and trend charts compare snapshots. |
 
 Schema changes go through Flask-Migrate. Every unique and foreign-key constraint is named, which SQLite migrations require.
@@ -118,6 +120,26 @@ Instagram sync uses the **Instagram API with Instagram Login**. It works with In
 
 What gets synced: the 50 most recent posts, with likes and comments from each post and views, shares, and saves from Instagram's insights. Instagram documents post captions as unavailable with Instagram Login, so posts are titled by type and date, such as "Instagram Reel · Oct 12, 2026". Instagram image links expire, so thumbnails refresh on each sync.
 
+### TikTok setup (optional)
+
+TikTok sync uses **Login Kit** and the **Display API**. While the TikTok app is in **sandbox** mode, it can connect up to 10 TikTok accounts you add as target users, without app review.
+
+1. Sign in at [TikTok for Developers](https://developers.tiktok.com/), open **Manage apps**, and create an app.
+2. Switch the app to **Sandbox** and click **Create Sandbox**.
+3. Add the **Login Kit** product for the **Web** platform, and add the scopes **user.info.basic**, **user.info.profile**, and **video.list**.
+4. In Login Kit's settings, add the redirect URI `https://<your-tunnel-address>/tiktok/callback`. TikTok requires `https` and does not allow query parameters, so use the same HTTPS tunnel as for Instagram.
+5. In **Sandbox settings → Target users**, click **Add account** and log in with your TikTok account.
+6. Copy the sandbox's **Client key** and **Client secret** into `.env`, then restart the app:
+   ```bash
+   TIKTOK_CLIENT_KEY=your-client-key
+   TIKTOK_CLIENT_SECRET=your-client-secret
+   TIKTOK_REDIRECT_URI=https://<your-tunnel-address>/tiktok/callback
+   ```
+   `TOKEN_ENCRYPTION_KEY` (from the Instagram steps) is shared.
+7. Open the app through the tunnel address and choose **Accounts → Connect TikTok**.
+
+What gets synced: the 50 most recent **public** videos, with views, likes, comments, and shares. TikTok's API does not provide saves. Posts are titled with the video's title or description.
+
 ### CSV format
 
 Required columns: `platform`, `caption`, `content_type`, `posted_at`, `views`, `likes`, `comments`, `shares`, `saves`.
@@ -136,7 +158,9 @@ Dates use ISO format, such as `2026-09-15 14:30` or `2026-09-15T14:30:00-07:00`;
 | `SESSION_COOKIE_SECURE` | No | Production only; set to `false` when serving over plain HTTP |
 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | For Instagram | From the Meta app's Instagram settings |
 | `INSTAGRAM_REDIRECT_URI` | For Instagram | Must exactly match a redirect URI saved in the Meta app |
-| `TOKEN_ENCRYPTION_KEY` | For Instagram | Encrypts stored access tokens; generate with `token_vault.generate_key()` |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | For TikTok | From the TikTok app's sandbox or production settings |
+| `TIKTOK_REDIRECT_URI` | For TikTok | Must start with `https` and match a redirect URI saved in Login Kit |
+| `TOKEN_ENCRYPTION_KEY` | For Instagram or TikTok | Encrypts stored OAuth tokens; generate with `token_vault.generate_key()` |
 
 Production refuses to start without `DATABASE_URL` and `SECRET_KEY`.
 
@@ -146,12 +170,12 @@ Production refuses to start without `DATABASE_URL` and `SECRET_KEY`.
 ./venv/bin/python -m pytest -v
 ```
 
-The 240 tests use an in-memory database and never touch `tracker.db` or call the real YouTube or Instagram APIs. They cover:
+The 294 tests use an in-memory database and never touch `tracker.db` or call the real YouTube, Instagram, or TikTok APIs. They cover:
 
 - Analytics calculations and filters
 - CSV parsing edge cases
 - YouTube sync, using mocked responses that exercise the client library's real retry logic
-- The Instagram OAuth flow, token encryption and refresh, and sync, using responses shaped like Meta's documented examples
+- The Instagram and TikTok OAuth flows, token encryption, refresh, and revocation, and sync, using responses shaped like each platform's documented examples
 - Validation and error pages
 - CSRF and security headers
 - Accessibility checks, including color contrast read from the stylesheet and form labels
@@ -184,17 +208,17 @@ Open http://127.0.0.1:8000. The container:
 - CSRF tokens on every form, and `HttpOnly`, `SameSite=Lax` session cookies
 - A strict Content Security Policy (no inline scripts or styles), anti-framing headers, and Chart.js pinned with a Subresource Integrity hash
 - Validation on every input; imported links are rendered only if they use `http` or `https`
-- Instagram logins are verified with a single-use `state` value, and access tokens are encrypted at rest
+- Instagram and TikTok logins are verified with a single-use `state` value, OAuth tokens are encrypted at rest, and disconnecting TikTok revokes its access
 - API keys, access tokens, app secrets, and login codes are redacted from all logs, including tracebacks
-- YouTube and Instagram requests use timeouts and retry only temporary failures, and no data is written until every API call succeeds
+- YouTube, Instagram, and TikTok requests use timeouts and retry only temporary failures, and no data is written until every API call succeeds
 - Structured logs with a request ID on every line, plus a `/health` endpoint that checks the database
 
 ## Project structure
 
 ```
 app.py, app_factory.py, config.py   Entry point, app factory, settings
-routes/                             Blueprints: main, posts, imports, instagram, api, health
-services/                           analytics.py, csv_service.py, youtube.py, instagram.py
+routes/                             Blueprints: main, posts, imports, instagram, tiktok, api, health
+services/                           analytics.py, csv_service.py, youtube.py, instagram.py, tiktok.py, http.py
 token_vault.py, redaction.py        Token encryption, secret redaction in logs
 models.py, validators.py            Database models and input validation
 errors.py, security.py,             Error pages, security headers,
@@ -209,5 +233,5 @@ docs/                               Architecture notes and screenshots
 
 - Run YouTube syncs in a background job instead of during the web request
 - User accounts and authentication
-- Live TikTok sync through the TikTok Display API
+- TikTok app review, so accounts beyond sandbox target users can connect
 - Pagination for very large post libraries
