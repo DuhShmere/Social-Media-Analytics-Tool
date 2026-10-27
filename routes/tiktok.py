@@ -1,7 +1,15 @@
 """Connect, sync, and disconnect TikTok accounts (OAuth)."""
 
 import requests
-from flask import Blueprint, abort, current_app, flash, redirect, request
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    request,
+)
 
 from extensions import db
 from models import SocialAccount
@@ -28,6 +36,10 @@ from token_vault import TokenVaultError, decrypt_token
 
 
 bp = Blueprint("tiktok", __name__, url_prefix="/tiktok")
+
+# TikTok verifies a website by fetching tiktok<token>.txt from its root,
+# so this blueprint has no URL prefix.
+verification_bp = Blueprint("tiktok_verification", __name__)
 
 STATE_SESSION_KEY = "tiktok_oauth_state"
 SETTINGS = (
@@ -217,3 +229,17 @@ def disconnect(account_id):
 
     flash(message, "success")
     return accounts_page()
+
+
+@verification_bp.get("/tiktok<token>.txt")
+def site_verification(token):
+    expected = current_app.config.get("TIKTOK_SITE_VERIFICATION")
+
+    if not expected or token != expected:
+        abort(404)
+
+    # Must match TikTok's downloaded file exactly, with no trailing newline.
+    return Response(
+        f"tiktok-developers-site-verification={expected}",
+        mimetype="text/plain",
+    )

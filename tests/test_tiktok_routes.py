@@ -353,3 +353,24 @@ def test_dashboard_labels_tiktok_posts(client, app):
 
 def test_csp_allows_tiktok_images():
     assert "https://*.tiktokcdn.com" in SECURITY_HEADERS["Content-Security-Policy"]
+
+
+# ---------------------------------------------------------
+# Site verification file
+# ---------------------------------------------------------
+
+def test_site_verification_file_matches_tiktoks_exactly(client, app, monkeypatch):
+    monkeypatch.setitem(app.config, "TIKTOK_SITE_VERIFICATION", "abc123TOKEN")
+
+    response = client.get("/tiktokabc123TOKEN.txt")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/plain"
+    assert response.data == b"tiktok-developers-site-verification=abc123TOKEN"
+
+
+@pytest.mark.parametrize("configured_token", [None, "abc123TOKEN"])
+def test_other_verification_files_are_not_found(client, app, monkeypatch, configured_token):
+    monkeypatch.setitem(app.config, "TIKTOK_SITE_VERIFICATION", configured_token)
+
+    assert client.get("/tiktokSOMETHINGELSE.txt").status_code == 404

@@ -36,6 +36,8 @@ class Config:
         self.TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
         self.TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
         self.TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI")
+        # Token from TikTok's "URL prefix" verification file (not secret).
+        self.TIKTOK_SITE_VERIFICATION = os.getenv("TIKTOK_SITE_VERIFICATION")
         # Encrypts stored OAuth tokens. See token_vault.py.
         self.TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY")
 
@@ -98,6 +100,7 @@ class TestingConfig(Config):
         self.TIKTOK_CLIENT_KEY = None
         self.TIKTOK_CLIENT_SECRET = None
         self.TIKTOK_REDIRECT_URI = None
+        self.TIKTOK_SITE_VERIFICATION = None
         self.TOKEN_ENCRYPTION_KEY = None
 
         # Most tests post forms directly. tests/test_csrf.py turns
