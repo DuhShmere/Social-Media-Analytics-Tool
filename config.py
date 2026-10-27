@@ -32,7 +32,11 @@ class Config:
         self.INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID")
         self.INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET")
         self.INSTAGRAM_REDIRECT_URI = os.getenv("INSTAGRAM_REDIRECT_URI")
-        # Encrypts stored OAuth access tokens. See token_vault.py.
+        # TikTok Login Kit and Display API (a TikTok developer app).
+        self.TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
+        self.TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
+        self.TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI")
+        # Encrypts stored OAuth tokens. See token_vault.py.
         self.TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY")
 
 
@@ -91,6 +95,9 @@ class TestingConfig(Config):
         self.INSTAGRAM_APP_ID = None
         self.INSTAGRAM_APP_SECRET = None
         self.INSTAGRAM_REDIRECT_URI = None
+        self.TIKTOK_CLIENT_KEY = None
+        self.TIKTOK_CLIENT_SECRET = None
+        self.TIKTOK_REDIRECT_URI = None
         self.TOKEN_ENCRYPTION_KEY = None
 
         # Most tests post forms directly. tests/test_csrf.py turns

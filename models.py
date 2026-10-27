@@ -37,6 +37,11 @@ class SocialAccount(db.Model):
     encrypted_access_token = db.Column(db.Text)
     access_token_expires_at = db.Column(db.DateTime)
 
+    # TikTok access tokens last 24 hours, so a long-lived refresh token
+    # (also encrypted) is kept to get new ones.
+    encrypted_refresh_token = db.Column(db.Text)
+    refresh_token_expires_at = db.Column(db.DateTime)
+
     posts = db.relationship(
         "Post",
         back_populates="social_account",
