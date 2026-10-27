@@ -96,12 +96,12 @@ Each sync uses 3 quota units: one call each for the channel, its uploads, and th
 Instagram sync uses the **Instagram API with Instagram Login**. It works with Instagram **Business or Creator** accounts; a personal account can switch to Creator for free in Instagram's settings.
 
 1. In [Meta for Developers](https://developers.facebook.com/), create an app of type **Business** and add the **Instagram** product, choosing **API setup with Instagram login**.
-2. Under **App roles**, add your Instagram account as an **Instagram tester**, then accept the invitation from Instagram's settings (look for **Apps and websites → Tester invites**; Meta moves this menu occasionally). While the Meta app is in development mode, only tester accounts can connect.
+2. Under **App roles → Roles**, scroll to the **Instagram Testers** section at the bottom and add your Instagram username. (The plain **Testers** role near the top is a Facebook role and sends no Instagram invite.) Then, in a desktop browser logged in to that Instagram account, open https://www.instagram.com/accounts/manage_access/, choose **Tester Invites**, and accept. While the Meta app is in development mode, only tester accounts can connect.
 3. Meta requires an **HTTPS** redirect address and does not accept `localhost`. For local testing, run an HTTPS tunnel to the app, for example:
    ```bash
    ngrok http 5001
    ```
-4. In the app's **Business login settings**, add the redirect URI `https://<your-tunnel-address>/instagram/callback`.
+4. On **Instagram → API setup with Instagram business login**, open section **3. Set up Instagram business login** and save the redirect URL `https://<your-tunnel-address>/instagram/callback`. Without it, Instagram's login page shows **"Invalid redirect_uri"**. If Meta saves it with a trailing slash, add the same slash to `INSTAGRAM_REDIRECT_URI`; the app accepts both.
 5. Generate an encryption key for stored tokens:
    ```bash
    ./venv/bin/python -c "from token_vault import generate_key; print(generate_key())"

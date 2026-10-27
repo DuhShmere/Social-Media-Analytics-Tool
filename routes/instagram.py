@@ -96,7 +96,9 @@ def connect():
     )
 
 
-@bp.get("/callback")
+# Meta's dashboard may save the redirect URI with a trailing slash, so
+# accept both forms; INSTAGRAM_REDIRECT_URI must match whichever is saved.
+@bp.get("/callback", strict_slashes=False)
 def callback():
     expected_state = session.pop(STATE_SESSION_KEY, None)
 

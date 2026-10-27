@@ -332,3 +332,12 @@ def test_csp_allows_instagram_images():
 
     assert "https://*.cdninstagram.com" in policy
     assert "https://*.fbcdn.net" in policy
+
+
+@pytest.mark.parametrize("path", ["/instagram/callback", "/instagram/callback/"])
+def test_callback_accepts_both_slash_forms(client, configured, path):
+    # Meta may save the redirect URI with a trailing slash.
+    response = client.get(f"{path}?error=access_denied")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/accounts")
