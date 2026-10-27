@@ -1,21 +1,16 @@
 """Connect, sync, and disconnect Instagram accounts (OAuth)."""
 
-import secrets
-from datetime import datetime, timezone
-
 import requests
-from flask import (
-    Blueprint,
-    abort,
-    current_app,
-    flash,
-    redirect,
-    request,
-    session,
-    url_for,
-)
+from flask import Blueprint, abort, current_app, flash, redirect, request
 
 from extensions import db
+from routes.oauth import (
+    accounts_page,
+    missing_settings,
+    start_state,
+    state_matches,
+    utc_now,
+)
 from models import SocialAccount
 from services.instagram import (
     PLATFORM,
@@ -42,18 +37,6 @@ SETTINGS = (
 )
 
 
-def utc_now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def missing_settings():
-    return [name for name in SETTINGS if not current_app.config.get(name)]
-
-
-def accounts_page():
-    return redirect(url_for("main.accounts"))
-
-
 def sync_message(result, connected=False):
     prefix = f"Connected @{result.account_name}. " if connected else ""
     message = (
@@ -72,7 +55,7 @@ def sync_message(result, connected=False):
 
 @bp.get("/connect")
 def connect():
-    missing = missing_settings()
+    missing = missing_settings(SETTINGS)
 
     if missing:
         flash(
@@ -82,10 +65,7 @@ def connect():
         )
         return accounts_page()
 
-    # A random value Instagram sends back, proving the callback belongs
-    # to a login this browser started (the OAuth version of CSRF).
-    state = secrets.token_urlsafe(32)
-    session[STATE_SESSION_KEY] = state
+    state = start_state(STATE_SESSION_KEY)
 
     return redirect(
         build_authorization_url(
@@ -100,17 +80,13 @@ def connect():
 # accept both forms; INSTAGRAM_REDIRECT_URI must match whichever is saved.
 @bp.get("/callback", strict_slashes=False)
 def callback():
-    expected_state = session.pop(STATE_SESSION_KEY, None)
+    state_ok = state_matches(STATE_SESSION_KEY, request.args.get("state"))
 
     if request.args.get("error"):
         flash("Instagram connection was cancelled.", "error")
         return accounts_page()
 
-    received_state = request.args.get("state", "")
-
-    if not expected_state or not secrets.compare_digest(
-        expected_state, received_state
-    ):
+    if not state_ok:
         current_app.logger.warning("Instagram callback with an invalid state.")
         flash(
             "This Instagram login could not be verified. Try connecting "

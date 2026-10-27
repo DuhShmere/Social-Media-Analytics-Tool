@@ -563,6 +563,12 @@ select:focus {
   color: #9d174d;
 }
 
+.account-platform-tiktok,
+.badge-tiktok {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
 .analytics-section {
   margin-bottom: 36px;
   padding: 24px;

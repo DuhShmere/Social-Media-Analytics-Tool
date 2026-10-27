@@ -15,6 +15,10 @@ Analytics Tool {% endblock %} {% block content %}
     <a class="button" href="{{ url_for('instagram.connect') }}">
       Connect Instagram
     </a>
+
+    <a class="button" href="{{ url_for('tiktok.connect') }}">
+      Connect TikTok
+    </a>
   </div>
 </section>
 
@@ -98,6 +102,36 @@ Analytics Tool {% endblock %} {% block content %}
       <a class="button" href="{{ url_for('instagram.connect') }}">
         Reconnect<span class="visually-hidden">: {{ account.account_name }}</span>
       </a>
+      {% elif account.platform == "TikTok" and account.encrypted_refresh_token %}
+      <form
+        method="POST"
+        action="{{ url_for('tiktok.sync', account_id=account.id) }}"
+        data-loading-text="Syncing…"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <button class="button" type="submit">
+          Sync Now<span class="visually-hidden">: {{ account.account_name }}</span>
+        </button>
+      </form>
+
+      <form
+        method="POST"
+        action="{{ url_for('tiktok.disconnect', account_id=account.id) }}"
+        data-loading-text="Disconnecting…"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <button class="button button-secondary" type="submit">
+          Disconnect<span class="visually-hidden">: {{ account.account_name }}</span>
+        </button>
+      </form>
+      {% elif account.platform == "TikTok" %}
+      <p class="muted-text">Not connected. Imported videos are kept.</p>
+
+      <a class="button" href="{{ url_for('tiktok.connect') }}">
+        Reconnect<span class="visually-hidden">: {{ account.account_name }}</span>
+      </a>
       {% endif %}
     </div>
   </article>
@@ -108,13 +142,17 @@ Analytics Tool {% endblock %} {% block content %}
 <div class="empty-state">
   <h2>No connected accounts</h2>
 
-  <p>Import a YouTube channel or connect Instagram to add your first account.</p>
+  <p>Import a YouTube channel or connect Instagram or TikTok to add your first account.</p>
 
   <div class="empty-actions">
     <a class="button" href="{{ url_for('imports.import_youtube') }}">Import YouTube</a>
 
     <a class="button button-secondary" href="{{ url_for('instagram.connect') }}">
       Connect Instagram
+    </a>
+
+    <a class="button button-secondary" href="{{ url_for('tiktok.connect') }}">
+      Connect TikTok
     </a>
   </div>
 </div>
