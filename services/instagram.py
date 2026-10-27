@@ -20,6 +20,8 @@ from urllib.parse import urlencode
 import requests
 
 from models import Post, SocialAccount, record_metric_snapshot
+from services import http
+from services.http import MAX_ATTEMPTS  # noqa: F401  Used by tests.
 from token_vault import decrypt_token, encrypt_token
 
 
@@ -44,12 +46,6 @@ INSIGHT_METRICS = ("views", "shares", "saved")
 
 MAX_POSTS = 50
 PAGE_SIZE = 25
-REQUEST_TIMEOUT_SECONDS = 15
-
-# Only GET requests are retried, and only for temporary failures. The
-# token exchange is a POST with a one-time code, so it is never retried.
-MAX_ATTEMPTS = 3
-RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 # Long-lived tokens last 60 days. Refreshing is allowed once a token is
 # at least a day old, so refresh whenever fewer than 30 days remain.
@@ -142,46 +138,26 @@ def describe_error(status_code, body):
     return InstagramError("Instagram could not complete the request.")
 
 
-def _parse_json(response):
-    try:
-        return response.json()
-    except ValueError:
-        return {}
+def _network_error():
+    return InstagramError(
+        "Could not reach Instagram. Check your internet connection "
+        "and try again."
+    )
 
 
 def request_json(session, method, url, sleep=time.sleep, **kwargs):
-    attempts = MAX_ATTEMPTS if method == "GET" else 1
-
-    for attempt in range(1, attempts + 1):
-        try:
-            response = session.request(
-                method,
-                url,
-                timeout=REQUEST_TIMEOUT_SECONDS,
-                **kwargs,
-            )
-        except (requests.ConnectionError, requests.Timeout):
-            if attempt < attempts:
-                sleep(2 ** (attempt - 1))
-                continue
-
-            raise InstagramError(
-                "Could not reach Instagram. Check your internet connection "
-                "and try again."
-            ) from None
-
-        if response.status_code in RETRY_STATUS_CODES and attempt < attempts:
-            sleep(2 ** (attempt - 1))
-            continue
-
-        body = _parse_json(response)
-
-        if not response.ok:
-            raise describe_error(response.status_code, body)
-
-        return body
-
-    raise InstagramError("Instagram could not complete the request.")
+    # Only GET requests are retried. The token exchange is a POST with a
+    # one-time code, so it is never retried.
+    return http.request_json(
+        session,
+        method,
+        url,
+        describe_error=describe_error,
+        network_error=_network_error,
+        retry=method == "GET",
+        sleep=sleep,
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------
