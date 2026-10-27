@@ -347,6 +347,49 @@ a.post-title:hover {
   margin: 0 auto;
 }
 
+.legal-page {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.legal-page h1 {
+  margin: 0 0 4px;
+  font-size: 32px;
+}
+
+.legal-page h2 {
+  margin: 28px 0 8px;
+  font-size: 20px;
+}
+
+.legal-page p,
+.legal-page li {
+  color: var(--text);
+}
+
+.legal-page a {
+  color: var(--primary);
+}
+
+.legal-updated {
+  margin: 0 0 20px;
+  color: var(--muted) !important;
+}
+
+.site-footer {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 20px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.site-footer a {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .data-form {
   display: grid;
   gap: 20px;

@@ -109,3 +109,13 @@ def post_detail(post_id):
         previous_snapshot=previous_snapshot,
         changes=changes,
     )
+
+
+@bp.get("/terms")
+def terms():
+    return render_template("legal/terms.html")
+
+
+@bp.get("/privacy")
+def privacy():
+    return render_template("legal/privacy.html")

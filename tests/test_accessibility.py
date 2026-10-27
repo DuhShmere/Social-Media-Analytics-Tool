@@ -152,6 +152,8 @@ def pages(app):
         f"/posts/{post_id}",
         "/import-csv",
         "/import-youtube",
+        "/terms",
+        "/privacy",
         "/does-not-exist",
     ]
 

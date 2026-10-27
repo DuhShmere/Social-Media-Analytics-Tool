@@ -302,3 +302,32 @@ def test_growth_numbers_use_thousands_separators(client, app):
     assert "+2,179,555" in html
     assert "+484.69%" in html
     assert "+2179555" not in html
+
+
+# ---------------------------------------------------------
+# Terms of Service and Privacy Policy
+# ---------------------------------------------------------
+
+def test_terms_page_covers_required_points(client):
+    html = client.get("/terms").get_data(as_text=True)
+
+    assert "<h1>Terms of Service</h1>" in html
+    for phrase in ("personal, non-commercial portfolio", "accounts that you own", "never posts", "as is"):
+        assert phrase in html
+
+
+def test_privacy_page_describes_data_and_deletion(client):
+    html = client.get("/privacy").get_data(as_text=True)
+
+    assert "<h1>Privacy Policy</h1>" in html
+    for phrase in ("TikTok:", "Instagram:", "encrypted", "not sold", "Disconnect", "revoke"):
+        assert phrase in html
+
+
+def test_every_page_links_terms_and_privacy_in_the_footer(client):
+    for path in ("/", "/accounts", "/terms", "/privacy", "/does-not-exist"):
+        footer = re.search(r'<footer class="site-footer">.*?</footer>', client.get(path).get_data(as_text=True), re.S)
+
+        assert footer, path
+        assert 'href="/terms"' in footer.group(0)
+        assert 'href="/privacy"' in footer.group(0)

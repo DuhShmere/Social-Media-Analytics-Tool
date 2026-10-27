@@ -58,5 +58,10 @@
 
       {% block content %}{% endblock %}
     </main>
+
+    <footer class="site-footer">
+      <a href="{{ url_for('main.terms') }}">Terms of Service</a>
+      <a href="{{ url_for('main.privacy') }}">Privacy Policy</a>
+    </footer>
   </body>
 </html>

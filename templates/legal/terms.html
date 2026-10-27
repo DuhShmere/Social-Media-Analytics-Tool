@@ -1,0 +1,53 @@
+{% extends "base.html" %} {% block title %} Terms of Service | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<article class="legal-page">
+  <h1>Terms of Service</h1>
+  <p class="legal-updated">Last updated October 27, 2026</p>
+
+  <h2>About this service</h2>
+  <p>
+    Social Media Analytics Tool is a personal, non-commercial portfolio
+    project. It lets its operator track the performance of their own social
+    media posts from YouTube, Instagram, TikTok, CSV files, and manual entry.
+  </p>
+
+  <h2>Using the service</h2>
+  <ul>
+    <li>Only connect accounts that you own or are authorized to manage.</li>
+    <li>
+      You must also follow the terms of each platform you connect, including
+      TikTok's, Instagram's, and YouTube's terms of service.
+    </li>
+    <li>Do not use the service to collect data about other people.</li>
+  </ul>
+
+  <h2>Connected accounts</h2>
+  <p>
+    Connecting an account gives the service read-only access to the profile
+    and post information described in the
+    <a href="{{ url_for('main.privacy') }}">Privacy Policy</a>. The service
+    never posts, comments, or messages on your behalf. You can disconnect an
+    account at any time from the Accounts page, and you can also remove the
+    app's access in each platform's own settings.
+  </p>
+
+  <h2>No warranty</h2>
+  <p>
+    The service is provided "as is", without warranties of any kind.
+    Metrics come from each platform's API and may be delayed, incomplete, or
+    unavailable. The service may change or stop at any time.
+  </p>
+
+  <h2>Limitation of liability</h2>
+  <p>
+    To the extent permitted by law, the operator is not liable for any
+    damages arising from your use of the service.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about these terms can be raised on the project's
+    <a href="https://github.com/DuhShmere/Social-Media-Analytics-Tool/issues" target="_blank" rel="noopener noreferrer">GitHub page<span class="visually-hidden"> (opens in a new tab)</span></a>.
+  </p>
+</article>
+{% endblock %}
