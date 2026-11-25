@@ -24,7 +24,7 @@ Pages are rendered with Jinja. The dashboard and post pages then call two JSON e
 | Layer | Files | Responsibility |
 |---|---|---|
 | Entry and setup | `app.py`, `app_factory.py`, `config.py` | `create_app()` builds the app from a per-environment config chosen by `APP_ENV` |
-| Routes | `routes/main.py`, `posts.py`, `imports.py`, `instagram.py`, `tiktok.py`, `api.py`, `health.py`, plus shared OAuth helpers in `oauth.py` | One blueprint per feature area; 21 URL rules |
+| Routes | `routes/auth.py`, `main.py`, `posts.py`, `imports.py`, `instagram.py`, `tiktok.py`, `api.py`, `health.py`, plus shared OAuth helpers in `oauth.py` | One blueprint per feature area; 28 URL rules |
 | Services | `services/analytics.py`, `csv_service.py`, `youtube.py`, `instagram.py`, `tiktok.py`, plus `http.py` for shared timeouts and retries | Business logic with no dependency on the Flask request |
 | Data | `models.py`, `extensions.py`, `migrations/` | SQLAlchemy models and Alembic migrations |
 | Input checks | `validators.py` | Shared validation with user-safe error messages |
@@ -35,12 +35,21 @@ Pages are rendered with Jinja. The dashboard and post pages then call two JSON e
 
 ```mermaid
 erDiagram
+    USERS ||--o{ SOCIAL_ACCOUNT : "owns"
+    USERS ||--o{ POST : "owns"
     SOCIAL_ACCOUNT ||--o{ POST : "has"
     POST ||--o{ METRIC_SNAPSHOT : "records"
+    USERS {
+        int id
+        string username "unique, lower case"
+        string password_hash "scrypt"
+        datetime created_at
+    }
     SOCIAL_ACCOUNT {
         int id
+        int user_id "owner"
         string platform
-        string external_account_id "unique with platform"
+        string external_account_id "unique with user and platform"
         datetime last_synced_at
         text encrypted_access_token "Instagram and TikTok"
         datetime access_token_expires_at
@@ -49,8 +58,9 @@ erDiagram
     }
     POST {
         int id
+        int user_id "owner"
         string platform
-        string external_id "unique with platform"
+        string external_id "unique with user and platform"
         string source "manual, csv_import, youtube_api, instagram_api, tiktok_api"
         int views
         int likes
@@ -65,7 +75,8 @@ erDiagram
 ```
 
 - A post's current metrics live on `post`. Every create, edit, import, and sync also appends a `metric_snapshot`, so growth and trend charts compare snapshots rather than overwriting history.
-- `(platform, external_id)` is unique, which is how re-syncs and re-imports update existing posts instead of duplicating them.
+- `(user_id, platform, external_id)` is unique, which is how re-syncs and re-imports update existing posts instead of duplicating them, separately for each user.
+- Deleting a user deletes their accounts, posts, and snapshots.
 - Only `manual` and `csv_import` posts can be edited or deleted; synced posts are owned by YouTube, Instagram, or TikTok.
 - Every unique and foreign-key constraint is named, which SQLite batch migrations require.
 
@@ -86,10 +97,15 @@ erDiagram
 - **Services do not read the Flask request.** They take plain values, which keeps them unit-testable without HTTP.
 - **The caller owns the transaction.** Services add to the session; routes commit or roll back, so one place decides what is saved.
 - **Fail at startup, not at runtime.** Production refuses to start without `DATABASE_URL` and `SECRET_KEY`.
+- **Every row has an owner.** `social_account` and `post` carry a required `user_id`, and uniqueness is per user, so two users can connect the same channel and each gets their own copy. Routes load rows with `owned_or_404()`, and list queries filter on the signed-in user. Snapshots are reached only through a post whose owner was checked.
 - **Server-rendered pages with small scripts.** No front-end framework; JavaScript only draws charts, filters the table, and manages form loading states.
 
 ## Security
 
+- User accounts with scrypt-hashed passwords (Werkzeug), at least 12 characters. Every page needs a signed-in user except sign-in, sign-up, `/health`, the legal pages, TikTok's verification file, and static files. Signed-out pages redirect to sign-in and `/api/` returns 401 JSON.
+- Sign-in gives the same answer, after the same hashing work, for an unknown username and a wrong password, so usernames cannot be discovered. Signing in starts a new session, the return address must be a page on this site, and the session stores a keyed hash of the password hash, so changing a password signs that user's other devices out.
+- Another user's post or account answers 404, exactly like one that does not exist.
+- Three failed sign-ins for a username within 15 minutes lock it until 15 minutes after the last failure (`LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`). Attempts while locked are refused before any password hashing and do not extend the lock. The lock is per username, not per IP address, because behind a tunnel or proxy every visitor shares one address. Unknown usernames lock the same way, so a lockout does not reveal which usernames exist. Failures live in the `failed_login` table, so the lock holds across restarts and gunicorn workers.
 - CSRF tokens on every form (Flask-WTF), with `SameSite=Lax` session cookies.
 - A strict Content Security Policy with no inline scripts or styles, plus anti-framing and `nosniff` headers. Chart.js is pinned with a Subresource Integrity hash.
 - Only `http(s)` links from imported data are rendered as links.
@@ -101,10 +117,11 @@ erDiagram
 - **Health:** `GET /health` checks the database and returns 200 or 503.
 - **Logs:** JSON lines in production, with a request ID on every line and per-request timing.
 - **Container:** the Dockerfile runs migrations, then gunicorn, as a non-root user with a health check.
-- **CI:** GitHub Actions runs 294 tests, then builds the image and checks the running container.
+- **CI:** GitHub Actions runs 408 tests, then builds the image and checks the running container.
 
 ## Known limitations
 
+- Anyone who knows a username can lock it for 15 minutes by guessing wrong three times. This trades a short denial of service for stopping password guessing.
 - Sync runs inside the web request, so a large channel makes the user wait; a background job queue would remove that.
 - Only the 50 most recent videos or posts per account are synced.
 - Instagram documents captions as unavailable with Instagram Login, so Instagram posts are titled by type and date. Instagram image links expire and are refreshed on each sync.

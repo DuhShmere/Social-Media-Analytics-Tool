@@ -164,7 +164,7 @@ def normalize_row(row):
     return normalized
 
 
-def find_matching_post(values):
+def find_matching_post(values, user_id):
     """Find a post with the same content, whatever its source.
 
     Manual posts have no external_id, so exporting and re-importing
@@ -172,6 +172,7 @@ def find_matching_post(values):
     generate_csv_external_id() uses.
     """
     return Post.query.filter(
+        Post.user_id == user_id,
         func.lower(Post.platform) == values["platform"].lower(),
         func.lower(Post.caption) == values["caption"].lower(),
         func.lower(Post.content_type) == values["content_type"].lower(),
@@ -225,8 +226,8 @@ def parse_csv_row(row):
     return values
 
 
-def import_posts_from_csv(binary_stream, session):
-    """Add valid, non-duplicate rows to the session.
+def import_posts_from_csv(binary_stream, session, *, user_id):
+    """Add one user's valid, non-duplicate rows to the session.
 
     Raises ValueError for problems with the file as a whole. Problems
     with individual rows are collected in the result instead.
@@ -276,12 +277,13 @@ def import_posts_from_csv(binary_stream, session):
             is_duplicate = (
                 key in seen_keys
                 or Post.query.filter_by(
+                    user_id=user_id,
                     platform=values["platform"],
                     external_id=values["external_id"],
                 ).first() is not None
                 or (
                     not normalized.get("external_id")
-                    and find_matching_post(values) is not None
+                    and find_matching_post(values, user_id) is not None
                 )
             )
 
@@ -291,7 +293,7 @@ def import_posts_from_csv(binary_stream, session):
 
             seen_keys.add(key)
 
-            post = Post(**values, source="csv_import")
+            post = Post(**values, user_id=user_id, source="csv_import")
             session.add(post)
             record_metric_snapshot(post)
             result.imported += 1

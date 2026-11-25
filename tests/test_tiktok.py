@@ -35,6 +35,8 @@ from services.tiktok import (
 )
 from token_vault import decrypt_token, generate_key
 
+from conftest import USER_ID
+
 
 NOW = datetime(2026, 10, 27, 12, 0)
 OK = {"code": "ok", "message": "", "log_id": "log-1"}
@@ -162,7 +164,7 @@ def test_revoke_sends_documented_fields(http):
 # ---------------------------------------------------------
 
 def account_with(key, access_expires_at, refresh_expires_at=NOW + timedelta(days=300)):
-    account = SocialAccount(platform="TikTok", account_name="x", external_account_id="open-123")
+    account = SocialAccount(user_id=USER_ID, platform="TikTok", account_name="x", external_account_id="open-123")
     store_tokens(
         account,
         TikTokTokens("act.old", access_expires_at, "rft.old", refresh_expires_at, "open-123"),
@@ -224,7 +226,7 @@ def test_unusable_tokens_require_reconnect(http, case):
     account = (
         account_with(key, NOW - timedelta(hours=1), refresh_expires_at=NOW - timedelta(days=1))
         if case == "refresh-expired"
-        else SocialAccount(platform="TikTok", account_name="x", external_account_id="1")
+        else SocialAccount(user_id=USER_ID, platform="TikTok", account_name="x", external_account_id="1")
     )
 
     with pytest.raises(TikTokError) as raised:
@@ -361,7 +363,7 @@ def test_sync_creates_account_posts_and_snapshots(app, http):
     mock_account(http, [video("1"), video("2", title="Second video", view_count=900)])
 
     with app.app_context():
-        result = sync_tiktok_account(client(), db.session, NOW)
+        result = sync_tiktok_account(client(), db.session, NOW, user_id=USER_ID)
         db.session.commit()
 
         account = SocialAccount.query.one()
@@ -381,14 +383,14 @@ def test_resync_updates_without_duplicates(app, http):
     mock_account(http, [video("1")])
 
     with app.app_context():
-        sync_tiktok_account(client(), db.session, NOW)
+        sync_tiktok_account(client(), db.session, NOW, user_id=USER_ID)
         db.session.commit()
 
     http.reset()
     mock_account(http, [video("1", view_count=8000)])
 
     with app.app_context():
-        result = sync_tiktok_account(client(), db.session, NOW + timedelta(days=1))
+        result = sync_tiktok_account(client(), db.session, NOW + timedelta(days=1), user_id=USER_ID)
         db.session.commit()
 
         post = Post.query.one()
@@ -403,7 +405,7 @@ def test_failed_fetch_writes_nothing(app, http):
 
     with app.app_context():
         with pytest.raises(TikTokError):
-            sync_tiktok_account(client(), db.session, NOW)
+            sync_tiktok_account(client(), db.session, NOW, user_id=USER_ID)
 
         assert not db.session.new
         assert SocialAccount.query.count() == 0

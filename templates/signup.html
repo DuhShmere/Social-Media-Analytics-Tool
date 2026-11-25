@@ -1,0 +1,100 @@
+{% extends "base.html" %} {% block title %} Create Account | Social Media
+Analytics Tool {% endblock %} {% block content %}
+<section class="form-page sign-in-page">
+  <div class="page-heading">
+    <div>
+      <h1>Create Account</h1>
+
+      {% if not closed %}
+      <p>Your posts and connected accounts are visible only to you.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if closed %}
+  <div class="message error-message" role="alert">
+    Sign-up is closed. Ask the person who runs this app to create an account
+    for you.
+  </div>
+
+  <p class="form-switch">
+    <a href="{{ url_for('auth.login') }}">Back to sign in</a>
+  </p>
+  {% else %}
+
+  {% if error %}
+  <div class="message error-message" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form
+    method="POST"
+    action="{{ url_for('auth.signup') }}"
+    class="data-form"
+    data-loading-text="Creating account…"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+    <div class="form-group">
+      <label for="username">Username</label>
+
+      <input
+        id="username"
+        name="username"
+        type="text"
+        value="{{ username }}"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        minlength="3"
+        maxlength="30"
+        pattern="[A-Za-z0-9_.\-]{3,30}"
+        aria-describedby="username-help"
+        required
+        autofocus
+      />
+
+      <small id="username-help">
+        3 to 30 characters: letters, numbers, dots, dashes, and underscores.
+      </small>
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="new-password"
+        minlength="12"
+        maxlength="128"
+        aria-describedby="password-help"
+        required
+      />
+
+      <small id="password-help">At least 12 characters.</small>
+    </div>
+
+    <div class="form-group">
+      <label for="confirm_password">Confirm password</label>
+
+      <input
+        id="confirm_password"
+        name="confirm_password"
+        type="password"
+        autocomplete="new-password"
+        required
+      />
+    </div>
+
+    <div class="form-actions">
+      <button class="button" type="submit">Create Account</button>
+    </div>
+  </form>
+
+  <p class="form-switch">
+    Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a>
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

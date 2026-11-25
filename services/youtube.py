@@ -261,7 +261,8 @@ class YouTubeClient:
         ]
 
 
-def sync_channel(client, handle, session, synced_at):
+def sync_channel(client, handle, session, synced_at, *, user_id):
+    """Import a channel's recent videos for one user."""
     channel = client.fetch_channel(handle)
 
     if channel is None:
@@ -278,12 +279,14 @@ def sync_channel(client, handle, session, synced_at):
         )
 
     social_account = SocialAccount.query.filter_by(
+        user_id=user_id,
         platform=PLATFORM,
         external_account_id=channel.channel_id,
     ).first()
 
     if social_account is None:
         social_account = SocialAccount(
+            user_id=user_id,
             platform=PLATFORM,
             external_account_id=channel.channel_id,
         )
@@ -298,12 +301,17 @@ def sync_channel(client, handle, session, synced_at):
 
     for video in videos:
         post = Post.query.filter_by(
+            user_id=user_id,
             platform=PLATFORM,
             external_id=video.video_id,
         ).first()
 
         if post is None:
-            post = Post(platform=PLATFORM, external_id=video.video_id)
+            post = Post(
+                user_id=user_id,
+                platform=PLATFORM,
+                external_id=video.video_id,
+            )
             session.add(post)
             imported_count += 1
         else:

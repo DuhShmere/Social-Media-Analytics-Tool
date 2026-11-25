@@ -14,6 +14,8 @@ from models import MetricSnapshot, Post, SocialAccount, record_metric_snapshot
 from services.analytics import calculate_metric_change
 from validators import parse_external_url
 
+from conftest import USER_ID
+
 
 def create_post(
     platform="YouTube",
@@ -28,6 +30,7 @@ def create_post(
     source="manual",
 ):
     post = Post(
+        user_id=USER_ID,
         platform=platform,
         caption=caption,
         content_type=content_type,

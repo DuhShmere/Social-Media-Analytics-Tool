@@ -402,24 +402,29 @@ class InstagramClient:
 # Saving data
 # ---------------------------------------------------------
 
-def sync_instagram_account(client, session, synced_at, account=None):
+def sync_instagram_account(client, session, synced_at, *, user_id, account=None):
     """Fetch the profile, recent posts, and their insights, then save.
 
-    Pass account to sync an existing connection. Without it, the account
-    is found by its Instagram user ID or created.
+    Pass account to sync an existing connection. Without it, the user's
+    account is found by its Instagram user ID or created.
     """
     profile = client.fetch_profile()
     posts = client.fetch_recent_posts()
     insights = {post.media_id: client.fetch_insights(post.media_id) for post in posts}
 
+    if account is not None and account.user_id != user_id:
+        raise ValueError("The account belongs to a different user.")
+
     if account is None:
         account = SocialAccount.query.filter_by(
+            user_id=user_id,
             platform=PLATFORM,
             external_account_id=profile.user_id,
         ).first()
 
     if account is None:
         account = SocialAccount(
+            user_id=user_id,
             platform=PLATFORM,
             external_account_id=profile.user_id,
         )
@@ -433,12 +438,13 @@ def sync_instagram_account(client, session, synced_at, account=None):
 
     for item in posts:
         post = Post.query.filter_by(
+            user_id=user_id,
             platform=PLATFORM,
             external_id=item.media_id,
         ).first()
 
         if post is None:
-            post = Post(platform=PLATFORM, external_id=item.media_id)
+            post = Post(user_id=user_id, platform=PLATFORM, external_id=item.media_id)
             session.add(post)
             imported += 1
         else:

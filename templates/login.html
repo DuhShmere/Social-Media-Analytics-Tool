@@ -1,0 +1,65 @@
+{% extends "base.html" %} {% block title %} Sign In | Social Media Analytics
+Tool {% endblock %} {% block content %}
+<section class="form-page sign-in-page">
+  <div class="page-heading">
+    <div>
+      <h1>Sign In</h1>
+
+      <p>Sign in to see your analytics.</p>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="message error-message" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form
+    method="POST"
+    action="{{ url_for('auth.login') }}"
+    class="data-form"
+    data-loading-text="Signing in…"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <input type="hidden" name="next" value="{{ next_page }}" />
+
+    <div class="form-group">
+      <label for="username">Username</label>
+
+      <input
+        id="username"
+        name="username"
+        type="text"
+        value="{{ username }}"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+        {% if not username %}autofocus{% endif %}
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+        {% if username %}autofocus{% endif %}
+      />
+    </div>
+
+    <div class="form-actions">
+      <button class="button" type="submit">Sign In</button>
+    </div>
+  </form>
+
+  {% if config.SIGNUP_ENABLED %}
+  <p class="form-switch">
+    New here? <a href="{{ url_for('auth.signup') }}">Create an account</a>
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

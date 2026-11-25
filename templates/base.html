@@ -27,6 +27,7 @@
           Social Analytics
         </a>
 
+        {% if current_user %}
         <div class="nav-links">
           {% for endpoint, label in [
             ("main.dashboard", "Dashboard"),
@@ -42,7 +43,26 @@
             {{ label }}
           </a>
           {% endfor %}
+
+          <a
+            class="nav-user"
+            href="{{ url_for('auth.change_password') }}"
+            {% if request.endpoint == "auth.change_password" %}aria-current="page"{% endif %}
+          >
+            <span class="visually-hidden">Change password for</span>
+            {{ current_user.username }}
+          </a>
+
+          <form
+            class="sign-out-form"
+            method="POST"
+            action="{{ url_for('auth.logout') }}"
+          >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button class="link-button" type="submit">Sign Out</button>
+          </form>
         </div>
+        {% endif %}
       </nav>
     </header>
 

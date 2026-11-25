@@ -4,6 +4,7 @@ import requests
 from flask import Blueprint, abort, current_app, flash, redirect, request
 
 from extensions import db
+from routes.auth import current_user, owned_or_404
 from routes.oauth import (
     accounts_page,
     missing_settings,
@@ -123,6 +124,7 @@ def callback():
             InstagramClient(token, session=http),
             db.session,
             now,
+            user_id=current_user().id,
         )
         store_token(
             result.account,
@@ -153,7 +155,7 @@ def callback():
 
 
 def instagram_account_or_404(account_id):
-    account = db.get_or_404(SocialAccount, account_id)
+    account = owned_or_404(SocialAccount, account_id)
 
     if account.platform != PLATFORM:
         abort(404)
@@ -178,6 +180,7 @@ def sync(account_id):
             InstagramClient(token, session=http),
             db.session,
             now,
+            user_id=account.user_id,
             account=account,
         )
         db.session.commit()

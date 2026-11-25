@@ -25,6 +25,8 @@ from services.tiktok import (
 )
 from token_vault import decrypt_token, generate_key
 
+from conftest import USER_ID
+
 
 REDIRECT_URI = "https://analytics.example.com/tiktok/callback"
 OK = {"code": "ok", "message": "", "log_id": "l"}
@@ -98,6 +100,7 @@ def start_login(client, state="expected-state"):
 
 def connected_account(key, access_expires_at, refresh_expires_at=None):
     account = SocialAccount(
+        user_id=USER_ID,
         platform="TikTok",
         account_name="Samir",
         account_handle="@samir.makes",
@@ -297,7 +300,7 @@ def test_sync_with_expired_refresh_token_asks_to_reconnect(client, app, configur
 
 def test_sync_rejects_other_platforms(client, app, configured):
     with app.app_context():
-        account = SocialAccount(platform="Instagram", account_name="x", external_account_id="1")
+        account = SocialAccount(user_id=USER_ID, platform="Instagram", account_name="x", external_account_id="1")
         db.session.add(account)
         db.session.commit()
         account_id = account.id
@@ -357,7 +360,7 @@ def test_accounts_page_shows_tiktok_connect_and_actions(client, app, configured)
 
 def test_disconnected_account_offers_reconnect(client, app):
     with app.app_context():
-        db.session.add(SocialAccount(platform="TikTok", account_name="Samir", external_account_id="open-123"))
+        db.session.add(SocialAccount(user_id=USER_ID, platform="TikTok", account_name="Samir", external_account_id="open-123"))
         db.session.commit()
 
     html = html_after(client.get("/accounts"))
@@ -368,7 +371,7 @@ def test_disconnected_account_offers_reconnect(client, app):
 
 def test_dashboard_labels_tiktok_posts(client, app):
     with app.app_context():
-        db.session.add(Post(platform="TikTok", caption="Video", content_type="Video", posted_at=datetime(2026, 10, 1), source="tiktok_api", external_id="1"))
+        db.session.add(Post(user_id=USER_ID, platform="TikTok", caption="Video", content_type="Video", posted_at=datetime(2026, 10, 1), source="tiktok_api", external_id="1"))
         db.session.commit()
 
     assert '<span class="badge badge-tiktok"> TikTok API </span>' in html_after(client.get("/"))

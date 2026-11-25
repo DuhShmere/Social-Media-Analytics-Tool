@@ -2,8 +2,8 @@
 
 from flask import Blueprint, render_template
 
-from extensions import db
 from models import MetricSnapshot, Post, SocialAccount
+from routes.auth import current_user, owned_or_404
 from services.analytics import calculate_metric_change, summarize_posts
 
 
@@ -12,11 +12,15 @@ bp = Blueprint("main", __name__)
 
 @bp.route("/")
 def dashboard():
-    posts = Post.query.order_by(
+    posts = Post.query.filter_by(
+        user_id=current_user().id
+    ).order_by(
         Post.posted_at.desc()
     ).all()
 
-    social_accounts = SocialAccount.query.order_by(
+    social_accounts = SocialAccount.query.filter_by(
+        user_id=current_user().id
+    ).order_by(
         SocialAccount.platform,
         SocialAccount.account_name,
     ).all()
@@ -54,7 +58,9 @@ def dashboard():
 
 @bp.route("/accounts")
 def accounts():
-    social_accounts = SocialAccount.query.order_by(
+    social_accounts = SocialAccount.query.filter_by(
+        user_id=current_user().id
+    ).order_by(
         SocialAccount.platform,
         SocialAccount.account_name,
     ).all()
@@ -67,7 +73,7 @@ def accounts():
 
 @bp.route("/posts/<int:post_id>")
 def post_detail(post_id):
-    post = db.get_or_404(Post, post_id)
+    post = owned_or_404(Post, post_id)
 
     snapshots = MetricSnapshot.query.filter_by(
         post_id=post.id

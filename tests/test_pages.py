@@ -5,6 +5,8 @@ from io import BytesIO
 from extensions import db
 from models import Post, SocialAccount, record_metric_snapshot
 
+from conftest import USER_ID
+
 
 def add_post(**overrides):
     fields = {
@@ -21,7 +23,7 @@ def add_post(**overrides):
     }
     fields.update(overrides)
 
-    post = Post(**fields)
+    post = Post(user_id=USER_ID, **fields)
     db.session.add(post)
     record_metric_snapshot(post)
     db.session.commit()
@@ -181,6 +183,7 @@ def test_posts_without_account_are_not_labeled_manual(client, app):
 def test_accounts_page_lists_account_details(client, app):
     with app.app_context():
         account = SocialAccount(
+        user_id=USER_ID,
             platform="YouTube",
             account_name="Example Channel",
             account_handle="@example",
@@ -221,6 +224,7 @@ def test_slow_or_duplicate_prone_forms_opt_into_loading_state(client, app):
         post_id = add_post().id
         db.session.add(
             SocialAccount(
+        user_id=USER_ID,
                 platform="YouTube",
                 account_name="Example Channel",
                 account_handle="@example",

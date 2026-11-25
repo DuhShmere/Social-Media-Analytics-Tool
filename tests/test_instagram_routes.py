@@ -19,6 +19,8 @@ from services import instagram
 from services.instagram import GRAPH_URL, SHORT_LIVED_TOKEN_URL, store_token
 from token_vault import decrypt_token, generate_key
 
+from conftest import USER_ID
+
 
 API = f"{GRAPH_URL}/{instagram.API_VERSION}"
 REDIRECT_URI = "https://analytics.example.com/instagram/callback"
@@ -91,6 +93,7 @@ def start_login(client, state="expected-state"):
 
 def connected_account(key, expires_at):
     account = SocialAccount(
+        user_id=USER_ID,
         platform="Instagram",
         account_name="samir.creates",
         account_handle="@samir.creates",
@@ -255,7 +258,7 @@ def test_sync_with_expired_token_asks_to_reconnect(client, app, configured, http
 
 def test_sync_rejects_non_instagram_accounts(client, app, configured):
     with app.app_context():
-        account = SocialAccount(platform="YouTube", account_name="x", external_account_id="UC1")
+        account = SocialAccount(user_id=USER_ID, platform="YouTube", account_name="x", external_account_id="UC1")
         db.session.add(account)
         db.session.commit()
         account_id = account.id
@@ -269,6 +272,7 @@ def test_disconnect_forgets_token_but_keeps_posts(client, app, configured):
         account_id = connected_account(configured, datetime.now() + timedelta(days=50))
         db.session.add(
             Post(
+        user_id=USER_ID,
                 platform="Instagram",
                 caption="Kept post",
                 content_type="Image",
@@ -314,6 +318,7 @@ def test_dashboard_labels_instagram_posts(client, app):
     with app.app_context():
         db.session.add(
             Post(
+        user_id=USER_ID,
                 platform="Instagram",
                 caption="Instagram Reel · Oct 12, 2026",
                 content_type="Reel",

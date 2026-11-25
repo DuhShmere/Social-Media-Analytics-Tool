@@ -19,6 +19,12 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
+    # After this many failed sign-ins for one username, that username
+    # cannot sign in for LOGIN_LOCKOUT_MINUTES. See routes/auth.py.
+    LOGIN_MAX_ATTEMPTS = 3
+    LOGIN_LOCKOUT_MINUTES = 15
+
+
     def __init__(self):
         self.SQLALCHEMY_DATABASE_URI = os.getenv(
             "DATABASE_URL",
@@ -27,6 +33,11 @@ class Config:
         self.YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
         # Signs the session cookie and CSRF tokens.
         self.SECRET_KEY = os.getenv("SECRET_KEY")
+        # Whether anyone can create an account at /signup. When false,
+        # accounts are created with `flask create-user`.
+        self.SIGNUP_ENABLED = (
+            os.getenv("SIGNUP_ENABLED", "true").lower() != "false"
+        )
 
         # Instagram API with Instagram Login (a Meta developer app).
         self.INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID")
@@ -48,8 +59,9 @@ class DevelopmentConfig(Config):
     def __init__(self):
         super().__init__()
 
-        # A random key per run is safe for local work. Forms left open
-        # across a restart just need a page reload.
+        # A random key per run is safe for local work, but every restart
+        # (including the reloader's) signs everyone out. Set SECRET_KEY
+        # in .env to stay signed in.
         if not self.SECRET_KEY:
             self.SECRET_KEY = secrets.token_hex(32)
 
@@ -102,6 +114,8 @@ class TestingConfig(Config):
         self.TIKTOK_REDIRECT_URI = None
         self.TIKTOK_SITE_VERIFICATION = None
         self.TOKEN_ENCRYPTION_KEY = None
+
+        self.SIGNUP_ENABLED = True
 
         # Most tests post forms directly. tests/test_csrf.py turns
         # protection back on to check it.

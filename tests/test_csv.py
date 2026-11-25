@@ -8,6 +8,8 @@ from extensions import db
 from models import MetricSnapshot, Post, record_metric_snapshot
 from services.csv_service import normalize_row
 
+from conftest import USER_ID
+
 
 HEADER = (
     "platform,caption,content_type,posted_at,views,likes,"
@@ -192,6 +194,7 @@ def test_timezone_offsets_are_stored_as_utc(client, app):
 
 def add_post(caption, source="manual", external_id=None):
     post = Post(
+        user_id=USER_ID,
         platform="YouTube",
         caption=caption,
         content_type="Video",

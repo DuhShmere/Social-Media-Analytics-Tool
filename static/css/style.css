@@ -74,6 +74,48 @@ body {
   color: var(--primary);
 }
 
+/* Sign Out is a form button (a POST with a CSRF token) styled to sit
+   in the navigation like the links beside it. */
+.sign-out-form {
+  display: contents;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--primary);
+}
+
+.sign-in-page {
+  max-width: 420px;
+}
+
+.form-switch {
+  margin-top: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.form-switch a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* The username, set apart from the page links by a divider. */
+.nav-links .nav-user {
+  padding-left: 22px;
+  border-left: 1px solid var(--border);
+  color: var(--text);
+}
+
 .nav-links a[aria-current="page"] {
   text-decoration: underline;
   text-decoration-thickness: 2px;
@@ -486,6 +528,11 @@ select:focus {
   .nav-links {
     flex-wrap: wrap;
     gap: 12px 18px;
+  }
+
+  .nav-links .nav-user {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .page-heading {

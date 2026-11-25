@@ -405,18 +405,23 @@ class TikTokClient:
 # Saving data
 # ---------------------------------------------------------
 
-def sync_tiktok_account(client, session, synced_at, account=None):
+def sync_tiktok_account(client, session, synced_at, *, user_id, account=None):
     profile = client.fetch_profile()
     videos = client.fetch_recent_videos()
 
+    if account is not None and account.user_id != user_id:
+        raise ValueError("The account belongs to a different user.")
+
     if account is None:
         account = SocialAccount.query.filter_by(
+            user_id=user_id,
             platform=PLATFORM,
             external_account_id=profile.open_id,
         ).first()
 
     if account is None:
         account = SocialAccount(
+            user_id=user_id,
             platform=PLATFORM,
             external_account_id=profile.open_id,
         )
@@ -431,12 +436,13 @@ def sync_tiktok_account(client, session, synced_at, account=None):
 
     for video in videos:
         post = Post.query.filter_by(
+            user_id=user_id,
             platform=PLATFORM,
             external_id=video.video_id,
         ).first()
 
         if post is None:
-            post = Post(platform=PLATFORM, external_id=video.video_id)
+            post = Post(user_id=user_id, platform=PLATFORM, external_id=video.video_id)
             session.add(post)
             imported += 1
         else:

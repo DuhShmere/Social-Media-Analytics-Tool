@@ -11,6 +11,7 @@ from flask import (
 )
 
 from extensions import db
+from routes.auth import current_user
 from models import Post
 from services.analytics import PostFilters, apply_post_filters
 from services.csv_service import (
@@ -52,6 +53,7 @@ def import_csv():
         result = import_posts_from_csv(
             uploaded_file.stream,
             db.session,
+            user_id=current_user().id,
         )
         db.session.commit()
 
@@ -102,7 +104,10 @@ def export_csv():
             mimetype="text/plain",
         )
 
-    posts = apply_post_filters(Post.query, filters).order_by(
+    posts = apply_post_filters(
+        Post.query.filter_by(user_id=current_user().id),
+        filters,
+    ).order_by(
         Post.posted_at.desc()
     ).all()
 
@@ -163,6 +168,7 @@ def import_youtube():
             synced_at=datetime.now(timezone.utc).replace(
                 tzinfo=None
             ),
+            user_id=current_user().id,
         )
 
         db.session.commit()

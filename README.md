@@ -49,8 +49,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for diagrams, the data flows, d
 
 | Table | Purpose |
 |---|---|
-| `social_account` | A connected channel or account. Unique on `(platform, external_account_id)`. Instagram and TikTok accounts also store encrypted OAuth tokens and their expiry; TikTok adds a refresh token. |
-| `post` | A post's current metrics and its `source` (`manual`, `csv_import`, `youtube_api`, `instagram_api`, or `tiktok_api`). Unique on `(platform, external_id)`, which makes re-syncs and re-imports update instead of duplicate. |
+| `users` | A user account: a unique lower-case username and a scrypt password hash. Every account and post belongs to one user. |
+| `social_account` | A connected channel or account. Unique on `(user_id, platform, external_account_id)`, so two users can connect the same channel. Instagram and TikTok accounts also store encrypted OAuth tokens and their expiry; TikTok adds a refresh token. |
+| `post` | A post's current metrics and its `source` (`manual`, `csv_import`, `youtube_api`, `instagram_api`, or `tiktok_api`). Unique on `(user_id, platform, external_id)`, which makes re-syncs and re-imports update instead of duplicate. |
 | `metric_snapshot` | One row per measurement, deleted with its post. Growth and trend charts compare snapshots. |
 
 Schema changes go through Flask-Migrate. Every unique and foreign-key constraint is named, which SQLite migrations require.
@@ -71,7 +72,15 @@ cp .env.example .env              # then add your YouTube API key
 ./venv/bin/python app.py
 ```
 
-Open http://127.0.0.1:5001. The database is created at `instance/tracker.db`.
+Open http://127.0.0.1:5001 and choose **Create an account**. The database is created at `instance/tracker.db`.
+
+**Upgrading from a version without user accounts?** `db upgrade` gives your existing accounts and posts to a user named `owner`, who cannot sign in until you set a password:
+
+```bash
+./venv/bin/python -m flask --app app set-password owner
+```
+
+To create accounts yourself, for example with sign-up closed, use `./venv/bin/python -m flask --app app create-user USERNAME`. Both commands prompt for the password without showing it.
 
 ### Database migrations
 
@@ -152,9 +161,10 @@ Dates use ISO format, such as `2026-09-15 14:30` or `2026-09-15T14:30:00-07:00`;
 | Variable | Required | Description |
 |---|---|---|
 | `APP_ENV` | No | `development` (default), `production`, or `testing` |
+| `SIGNUP_ENABLED` | No | `true` (default) lets anyone create an account at `/signup`; `false` closes it |
 | `YOUTUBE_API_KEY` | For YouTube features | YouTube Data API v3 key |
 | `DATABASE_URL` | In production | SQLAlchemy URL; defaults to `instance/tracker.db` in development |
-| `SECRET_KEY` | In production | Signs session cookies and CSRF tokens; generated per run in development |
+| `SECRET_KEY` | In production | Signs session cookies and CSRF tokens. Generated per run in development, which signs everyone out on restart, so set it to stay signed in |
 | `SESSION_COOKIE_SECURE` | No | Production only; set to `false` when serving over plain HTTP |
 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | For Instagram | From the Meta app's Instagram settings |
 | `INSTAGRAM_REDIRECT_URI` | For Instagram | Must exactly match a redirect URI saved in the Meta app |
@@ -170,13 +180,14 @@ Production refuses to start without `DATABASE_URL` and `SECRET_KEY`.
 ./venv/bin/python -m pytest -v
 ```
 
-The 294 tests use an in-memory database and never touch `tracker.db` or call the real YouTube, Instagram, or TikTok APIs. They cover:
+The 408 tests use an in-memory database and never touch `tracker.db` or call the real YouTube, Instagram, or TikTok APIs. They cover:
 
 - Analytics calculations and filters
 - CSV parsing edge cases
 - YouTube sync, using mocked responses that exercise the client library's real retry logic
 - The Instagram and TikTok OAuth flows, token encryption, refresh, and revocation, and sync, using responses shaped like each platform's documented examples
 - Validation and error pages
+- Sign-up, sign-in, the sign-in lockout, password changes, and isolation between users (every route is checked against another user's data)
 - CSRF and security headers
 - Accessibility checks, including color contrast read from the stylesheet and form labels
 - Logging and configuration
@@ -205,6 +216,9 @@ Open http://127.0.0.1:8000. The container:
 
 ## Security and reliability
 
+- User accounts with scrypt-hashed passwords. Every page needs a signed-in user except sign-in, sign-up, the health check, the legal pages, and TikTok's verification file
+- Three failed sign-ins within 15 minutes lock that username for 15 minutes, even for the right password. Failures are stored in the database, so the lock holds across restarts and server workers
+- Each user sees only their own accounts and posts; another user's post or account answers 404, the same as one that does not exist
 - CSRF tokens on every form, and `HttpOnly`, `SameSite=Lax` session cookies
 - A strict Content Security Policy (no inline scripts or styles), anti-framing headers, and Chart.js pinned with a Subresource Integrity hash
 - Validation on every input; imported links are rendered only if they use `http` or `https`

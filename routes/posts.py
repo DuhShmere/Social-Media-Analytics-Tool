@@ -4,6 +4,7 @@ from flask import Blueprint, redirect, render_template, request, url_for
 
 from extensions import db
 from models import Post, record_metric_snapshot
+from routes.auth import current_user, owned_or_404
 from validators import (
     CONTENT_TYPE_CHOICES,
     METRIC_FIELDS,
@@ -73,6 +74,7 @@ def add_post():
     try:
         post = Post(
             **parse_post_form(request.form),
+            user_id=current_user().id,
             source="manual",
         )
 
@@ -97,7 +99,7 @@ def add_post():
     methods=["GET", "POST"],
 )
 def edit_post(post_id):
-    post = db.get_or_404(Post, post_id)
+    post = owned_or_404(Post, post_id)
 
     if not post.is_editable:
         return redirect(url_for("main.dashboard"))
@@ -137,7 +139,7 @@ def edit_post(post_id):
 
 @bp.post("/posts/<int:post_id>/delete")
 def delete_post(post_id):
-    post = db.get_or_404(Post, post_id)
+    post = owned_or_404(Post, post_id)
 
     if not post.is_editable:
         return redirect(url_for("main.dashboard"))

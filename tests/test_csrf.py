@@ -9,6 +9,8 @@ from config import get_config
 from extensions import db
 from models import Post, SocialAccount, record_metric_snapshot
 
+from conftest import USER_ID
+
 
 @pytest.fixture()
 def csrf_on(app, monkeypatch):
@@ -30,7 +32,7 @@ def add_post(**overrides):
         "source": "manual",
     }
     fields.update(overrides)
-    post = Post(**fields)
+    post = Post(user_id=USER_ID, **fields)
     db.session.add(post)
     record_metric_snapshot(post)
     db.session.commit()
@@ -101,6 +103,7 @@ def test_every_post_form_includes_a_token(client, csrf_on):
         post_id = add_post().id
         db.session.add(
             SocialAccount(
+        user_id=USER_ID,
                 platform="YouTube",
                 account_name="Example Channel",
                 account_handle="@example",

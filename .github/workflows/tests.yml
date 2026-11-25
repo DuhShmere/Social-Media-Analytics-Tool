@@ -65,9 +65,11 @@ jobs:
 
       - name: Check pages, headers, and user
         run: |
-          curl -fsS -o /dev/null http://127.0.0.1:8000/
-          curl -fsSI http://127.0.0.1:8000/ | grep -i "^content-security-policy:"
-          curl -fsSI http://127.0.0.1:8000/ | grep -i "^x-request-id:"
+          curl -fsS -o /dev/null http://127.0.0.1:8000/login
+          curl -fsSI http://127.0.0.1:8000/login | grep -i "^content-security-policy:"
+          curl -fsSI http://127.0.0.1:8000/login | grep -i "^x-request-id:"
+          # Signed out, the dashboard redirects to sign-in.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/)" = "302"
           test "$(docker exec app id -u)" != "0"
 
       - name: Wait for Docker to report healthy

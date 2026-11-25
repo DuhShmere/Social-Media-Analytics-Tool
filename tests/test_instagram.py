@@ -30,6 +30,8 @@ from services.instagram import (
 )
 from token_vault import decrypt_token, generate_key
 
+from conftest import USER_ID
+
 
 NOW = datetime(2026, 10, 26, 12, 0)
 API = f"{GRAPH_URL}/{instagram.API_VERSION}"
@@ -292,7 +294,7 @@ def test_error_messages(http, status, code, message, reconnect):
 # ---------------------------------------------------------
 
 def account_with_token(key, expires_at, token="old-token"):
-    account = SocialAccount(platform="Instagram", account_name="x", external_account_id="1")
+    account = SocialAccount(user_id=USER_ID, platform="Instagram", account_name="x", external_account_id="1")
     store_token(account, token, expires_at, key)
     return account
 
@@ -336,7 +338,7 @@ def test_unusable_tokens_require_reconnect(expires_at):
     account = (
         account_with_token(key, expires_at)
         if expires_at
-        else SocialAccount(platform="Instagram", account_name="x", external_account_id="1")
+        else SocialAccount(user_id=USER_ID, platform="Instagram", account_name="x", external_account_id="1")
     )
 
     with pytest.raises(InstagramError) as raised:
@@ -364,7 +366,7 @@ def test_sync_creates_account_posts_and_snapshots(app, http):
     mock_account(http, [media_item("1", "IMAGE"), media_item("2", "VIDEO")])
 
     with app.app_context():
-        result = sync_instagram_account(client(), db.session, NOW)
+        result = sync_instagram_account(client(), db.session, NOW, user_id=USER_ID)
         db.session.commit()
 
         account = SocialAccount.query.one()
@@ -385,14 +387,14 @@ def test_resync_updates_posts_without_duplicates(app, http):
     mock_account(http, [media_item("1")])
 
     with app.app_context():
-        sync_instagram_account(client(), db.session, NOW)
+        sync_instagram_account(client(), db.session, NOW, user_id=USER_ID)
         db.session.commit()
 
     http.reset()
     mock_account(http, [media_item("1", like_count=200)])
 
     with app.app_context():
-        result = sync_instagram_account(client(), db.session, NOW + timedelta(days=1))
+        result = sync_instagram_account(client(), db.session, NOW + timedelta(days=1), user_id=USER_ID)
         db.session.commit()
 
         post = Post.query.one()
@@ -406,7 +408,7 @@ def test_posts_without_insights_are_still_saved(app, http):
     mock_account(http, [media_item("1")], insights_status=400)
 
     with app.app_context():
-        result = sync_instagram_account(client(), db.session, NOW)
+        result = sync_instagram_account(client(), db.session, NOW, user_id=USER_ID)
 
         post = Post.query.one()
         assert result.missing_insights == 1
@@ -419,7 +421,7 @@ def test_failed_fetch_writes_nothing(app, http):
 
     with app.app_context():
         with pytest.raises(InstagramError):
-            sync_instagram_account(client(), db.session, NOW)
+            sync_instagram_account(client(), db.session, NOW, user_id=USER_ID)
 
         assert not db.session.new
         assert SocialAccount.query.count() == 0

@@ -2,8 +2,8 @@
 
 from flask import Blueprint, jsonify, request
 
-from extensions import db
 from models import MetricSnapshot, Post
+from routes.auth import current_user, owned_or_404
 from services.analytics import (
     PostFilters,
     apply_post_filters,
@@ -23,7 +23,10 @@ def analytics_api():
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
 
-    posts = apply_post_filters(Post.query, filters).all()
+    posts = apply_post_filters(
+        Post.query.filter_by(user_id=current_user().id),
+        filters,
+    ).all()
 
     top_posts = sorted(
         posts,
@@ -81,7 +84,7 @@ def analytics_api():
 
 @bp.get("/posts/<int:post_id>/history")
 def post_history_api(post_id):
-    post = db.get_or_404(Post, post_id)
+    post = owned_or_404(Post, post_id)
 
     snapshots = MetricSnapshot.query.filter_by(
         post_id=post.id

@@ -12,6 +12,7 @@ from flask import (
 )
 
 from extensions import db
+from routes.auth import current_user, owned_or_404
 from models import SocialAccount
 from routes.oauth import (
     accounts_page,
@@ -59,7 +60,7 @@ def sync_message(result, connected=False):
 
 
 def tiktok_account_or_404(account_id):
-    account = db.get_or_404(SocialAccount, account_id)
+    account = owned_or_404(SocialAccount, account_id)
 
     if account.platform != PLATFORM:
         abort(404)
@@ -130,6 +131,7 @@ def callback():
             TikTokClient(tokens.access_token, session=http),
             db.session,
             now,
+            user_id=current_user().id,
         )
         store_tokens(result.account, tokens, config["TOKEN_ENCRYPTION_KEY"])
         db.session.commit()
@@ -179,6 +181,7 @@ def sync(account_id):
             TikTokClient(token, session=http),
             db.session,
             now,
+            user_id=account.user_id,
             account=account,
         )
         db.session.commit()

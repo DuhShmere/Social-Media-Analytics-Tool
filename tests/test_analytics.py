@@ -11,6 +11,8 @@ from services.analytics import (
     summarize_posts,
 )
 
+from conftest import USER_ID
+
 
 def add_post(
     posted_at,
@@ -25,6 +27,7 @@ def add_post(
     social_account=None,
 ):
     post = Post(
+        user_id=USER_ID,
         platform=platform,
         caption=caption,
         content_type=content_type,
@@ -120,6 +123,7 @@ def test_date_range_includes_whole_end_day(app):
 def test_filters_combine_and_search_ignores_case(app):
     with app.app_context():
         account = SocialAccount(
+        user_id=USER_ID,
             platform="YouTube",
             account_name="Main channel",
             external_account_id="UC-main",
@@ -149,8 +153,8 @@ def test_filters_combine_and_search_ignores_case(app):
 
 def test_summarize_posts_totals_and_engagement():
     posts = [
-        Post(views=1000, likes=100, comments=20, shares=10, saves=5),
-        Post(views=3000, likes=200, comments=0, shares=0, saves=0),
+        Post(user_id=USER_ID, views=1000, likes=100, comments=20, shares=10, saves=5),
+        Post(user_id=USER_ID, views=3000, likes=200, comments=0, shares=0, saves=0),
     ]
 
     summary = summarize_posts(posts)
@@ -170,15 +174,15 @@ def test_summarize_posts_totals_and_engagement():
 def test_summarize_posts_with_no_views_has_zero_engagement():
     assert summarize_posts([])["engagement_rate"] == 0
     assert summarize_posts(
-        [Post(views=0, likes=5, comments=0, shares=0, saves=0)]
+        [Post(user_id=USER_ID, views=0, likes=5, comments=0, shares=0, saves=0)]
     )["engagement_rate"] == 0
 
 
 def test_best_posting_time_needs_minimum_sample_size():
     posts = [
-        Post(posted_at=datetime(2026, 9, 14, 13, 0), views=100, likes=50,
+        Post(user_id=USER_ID, posted_at=datetime(2026, 9, 14, 13, 0), views=100, likes=50,
              comments=0, shares=0, saves=0),
-        Post(posted_at=datetime(2026, 9, 14, 14, 0), views=100, likes=50,
+        Post(user_id=USER_ID, posted_at=datetime(2026, 9, 14, 14, 0), views=100, likes=50,
              comments=0, shares=0, saves=0),
     ]
 
@@ -192,6 +196,7 @@ def test_best_posting_time_needs_minimum_sample_size():
 def test_best_posting_time_picks_highest_engagement_window():
     def post_at(day, hour, likes):
         return Post(
+        user_id=USER_ID,
             posted_at=datetime(2026, 9, day, hour, 15),
             views=100,
             likes=likes,

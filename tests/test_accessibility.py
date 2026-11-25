@@ -16,6 +16,8 @@ import pytest
 from extensions import db
 from models import Post, SocialAccount, record_metric_snapshot
 
+from conftest import USER_ID
+
 
 CSS_PATH = Path(__file__).resolve().parent.parent / "static" / "css" / "style.css"
 
@@ -132,7 +134,7 @@ def add_post(**overrides):
         "external_url": "https://www.youtube.com/watch?v=example",
     }
     fields.update(overrides)
-    post = Post(**fields)
+    post = Post(user_id=USER_ID, **fields)
     db.session.add(post)
     record_metric_snapshot(post)
     db.session.commit()
@@ -152,6 +154,7 @@ def pages(app):
         f"/posts/{post_id}",
         "/import-csv",
         "/import-youtube",
+        "/account/password",
         "/terms",
         "/privacy",
         "/does-not-exist",
@@ -274,6 +277,7 @@ def test_sync_buttons_name_their_account(client, app):
     with app.app_context():
         db.session.add(
             SocialAccount(
+        user_id=USER_ID,
                 platform="YouTube",
                 account_name="Example Channel",
                 account_handle="@example",

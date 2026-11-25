@@ -6,11 +6,13 @@ from dotenv import load_dotenv
 from flask import Flask
 
 import models  # noqa: F401  Registers the models for Flask-Migrate.
+from cli import register_commands
 from config import get_config
 from errors import register_error_handlers
 from extensions import csrf, db, migrate
 from logging_config import configure_logging, register_request_logging
 from routes import register_blueprints
+from routes.auth import register_sign_in
 from security import register_security_headers
 from services.youtube import ApiKeyRedactionFilter
 
@@ -49,6 +51,11 @@ def create_app(config_name="development"):
     # hook (such as the CSRF check) can reject it.
     register_request_logging(app)
 
+    # Before the CSRF check, so a signed-out request is sent to the
+    # sign-in page instead of failing with "This page expired". It also
+    # loads the signed-in user that every other route relies on.
+    register_sign_in(app)
+
     db.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
@@ -56,5 +63,6 @@ def create_app(config_name="development"):
     register_blueprints(app)
     register_error_handlers(app)
     register_security_headers(app)
+    register_commands(app)
 
     return app
