@@ -258,6 +258,29 @@ def test_sync_refreshes_an_expired_access_token_first(client, app, configured, h
         assert decrypt_token(account.encrypted_refresh_token, configured) == "rft.rotated"
 
 
+def test_sync_keeps_a_rotated_refresh_token_when_the_sync_fails(client, app, configured, http):
+    with app.app_context():
+        account_id = connected_account(configured, datetime.now() - timedelta(hours=1))
+
+    mock_token(http, access="act.refreshed", refresh="rft.rotated")
+    # The refresh succeeds, then TikTok rate-limits the profile request.
+    http.get(
+        USER_INFO_URL,
+        json={"data": {}, "error": {"code": "rate_limit_exceeded", "message": "", "log_id": "l"}},
+    )
+
+    html = html_after(client.post(f"/tiktok/accounts/{account_id}/sync", follow_redirects=True))
+
+    assert "rate limit" in html
+
+    with app.app_context():
+        account = db.session.get(SocialAccount, account_id)
+        assert decrypt_token(account.encrypted_access_token, configured) == "act.refreshed"
+        assert decrypt_token(account.encrypted_refresh_token, configured) == "rft.rotated"
+        assert account.access_token_expires_at > datetime.now()
+        assert db.session.query(Post).count() == 0
+
+
 def test_sync_with_expired_refresh_token_asks_to_reconnect(client, app, configured, http):
     with app.app_context():
         account_id = connected_account(

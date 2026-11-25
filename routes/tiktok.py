@@ -170,6 +170,11 @@ def sync(account_id):
             config.get("TIKTOK_CLIENT_SECRET"),
             now,
         )
+        # Save a refreshed token pair before syncing. TikTok may have
+        # rotated the refresh token, so if the sync below fails, its
+        # rollback must not throw the only working refresh token away.
+        db.session.commit()
+
         result = sync_tiktok_account(
             TikTokClient(token, session=http),
             db.session,
